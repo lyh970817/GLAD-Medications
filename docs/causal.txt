@@ -1,0 +1,240 @@
+n_relatives -> se
+n_relatives -> time -> se
+n_relatives -> audit -> se
+n_relatives -> pack_year_ -> se
+??? n_relatives -> employment -> se
+
+CURRENT
+n_relatives -> phq9 -> se
+n_relatives -> phq9 -> audit -> se
+n_relatives -> phq9 -> pack_year -> se
+
+n_relatives -> wsas -> phq9 -> se 
+n_relatives -> wsas -> phq9 -> audit -> se
+n_relatives -> wsas -> phq9 -> pack_year -> se
+
+n_relatives -> wsas -> pack_year -> se
+n_relatives -> wsas -> audit ->  se
+
+-----------------------
+
+bmi -> se
+bmi -> pack_year -> se
+
+CURRENT
+bmi -> phq9 -> se
+bmi -> phq9 -> pack_year -> se
+bmi -> phq9 -> audit -> se
+
+C: pack_year audit
+
+-----------------------
+pack_year -> se
+
+CURRENT
+pack_year -> phq9 -> se
+pack_year -> comorbidity -> phq9 -> se
+
+-------------------------
+marital -> se
+
+CURRENT
+marital -> wsas -> pack_year -> phq9 -> se
+marital -> wsas -> pack_year -> phq9 -> time -> se
+marital -> wsas -> pack_year -> phq9 -> audit -> se
+
+marital -> phq9 -> se
+marital -> phq9 -> time -> se
+marital -> phq9 -> audit -> se
+marital -> phq9 -> audit -> time -> se
+
+--------------------------
+employment -> se
+
+CURRENT
+employment -> wsas -> phq9 -> se
+employment -> phq9 -> se
+
+--------------------------
+comorbidity -> se
+
+CURRENT
+comorbidity -> phq9 -> se
+comorbidity -> phq9 -> time -> se
+comorbidity -> phq9 -> audit -> se
+comorbidity -> phq9 -> pack_year -> time -> se
+
+comorbidity -> wsas -> phq9 -> se
+comorbidity -> wsas -> phq9 -> time -> se
+comorbidity -> wsas -> phq9 -> audit -> se
+comorbidity -> wsas -> phq9 -> pack_year -> time -> se
+
+C: pack_year, audit, bmi, n_relatives
+
+-------------------------------------
+
+audit -> se
+audit -> bmi -> se
+
+
+CURRENT
+audit -> phq9 -> pack_year -> se
+audit -> phq9 -> time -> se
+audit -> bmi -> phq9 -> se
+audit -> bmi -> comorbidity -> phq9 -> se
+
+----------------------------------
+
+time -> se
+
+C:phq9
+
+----------------------------------
+
+CURRENT: 
+wsas -> phq9 -> se 
+wsas -> phq9 -> time -> se
+wsas -> phq9 -> audit -> se
+wsas -> phq9 -> pack_year -> se
+
+wsas -> pack_year -> se
+wsas -> pack_year -> phq9 -> se
+wsas -> pack_year -> phq9 -> time -> se
+wsas -> pack_year -> phq9 -> audit -> se
+
+wsas -> audit -> phq9 -> se
+wsas -> audit -> phq9 -> time -> se
+wsas -> audit -> phq9 -> pack_year -> se
+
+----------------------------------------------------
+
+CURRENT 
+phq9 -> se 
+phq9 -> time -> se
+phq9 -> audit -> se
+
+C:audit, pack_year
+
+
+-------------EFF-----------------
+
+first_imprv -> eff
+
+C: bmi
+
+---------------------
+n_relatives -> eff
+n_relatives -> audit -> eff
+n_relatives -> pack_year_ -> eff
+
+CURRENT
+n_relatives -> phq9 -> eff
+n_relatives -> phq9 -> audit -> eff
+
+n_relatives -> audit -> phq9 -> eff
+n_relatives -> audit -> phq9 -> pack_year -> eff
+
+n_relatives -> pack_year -> phq9 -> eff
+n_relatives -> pack_year -> phq9 -> audit -> eff
+
+n_relatives -> wsas -> phq9 -> eff 
+n_relatives -> wsas -> phq9 -> audit -> eff
+
+n_relatives -> wsas -> pack_year -> eff
+n_relatives -> wsas -> pack_year -> phq9 -> eff
+n_relatives -> wsas -> pack_year -> phq9 -> audit -> eff
+
+n_relatives -> wsas -> audit -> phq9 -> eff
+n_relatives -> wsas -> audit -> phq9 -> pack_year -> eff
+
+-----------------------
+
+bmi -> eff
+bmi -> comorbidity -> eff
+
+CURRENT
+bmi -> phq9 -> eff
+bmi -> comorbidity -> phq9 -> eff
+
+C: pack_year audit
+
+-----------------------
+pack_year -> eff
+pack_year -> comorbidity -> eff
+
+CURRENT
+pack_year -> phq9 -> eff
+pack_year -> comorbidity -> phq9 -> eff
+
+-------------------------
+marital -> eff
+
+CURRENT
+marital -> wsas -> pack_year -> phq9 -> eff
+marital -> wsas -> pack_year -> phq9 -> audit -> eff
+
+marital -> phq9 -> eff
+marital -> phq9 -> audit -> eff
+marital -> phq9 -> audit -> time -> eff
+
+--------------------------
+employment -> eff
+
+CURRENT
+employment -> wsas -> phq9 -> eff
+employment -> phq9 -> eff
+
+--------------------------
+comorbidity -> eff
+
+CURRENT
+comorbidity -> phq9 -> eff
+comorbidity -> phq9 -> audit -> eff
+comorbidity -> phq9 -> pack_year -> time -> eff
+
+comorbidity -> wsas -> phq9 -> eff
+comorbidity -> wsas -> phq9 -> audit -> eff
+comorbidity -> wsas -> phq9 -> pack_year -> time -> eff
+
+C: pack_year, audit, bmi, n_relatives
+
+-------------------------------------
+
+audit -> eff
+audit -> bmi -> eff
+
+
+CURRENT
+audit -> phq9 -> pack_year -> eff
+audit -> bmi -> phq9 -> eff
+audit -> bmi -> comorbidity -> phq9 -> eff
+
+----------------------------------
+
+CURRENT: 
+wsas -> phq9 -> eff 
+wsas -> phq9 -> audit -> eff
+wsas -> phq9 -> pack_year -> eff
+
+wsas -> employment -> eff 
+wsas -> employment -> phq9 -> eff 
+
+wsas -> pack_year -> eff
+wsas -> pack_year -> phq9 -> eff
+wsas -> pack_year -> phq9 -> audit -> eff
+
+wsas -> audit -> phq9 -> eff
+wsas -> audit -> phq9 -> pack_year -> eff
+
+----------------------------------------------------
+
+CURRENT 
+phq9 -> eff 
+phq9 -> audit -> eff
+
+C:audit, pack_year
+
+-----------------------------
+
+se -> eff
+C:ph9, bmi, comorbidity, pack_year, audit, n_relatives, marital, employment
