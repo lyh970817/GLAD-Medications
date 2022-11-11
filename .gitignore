@@ -1,6 +1,5 @@
-*.RData
-*.rds
-*.hash
-*/graphs
-*.html
-*.json
+graphs/*
+data/*
+results/*
+cache/*
+report/*

@@ -1,190 +1,44 @@
-setwd("~/Yandex.Disk/Projects/Research/TNG/GLAD/GLAD_Medications_New")
+setwd("~/Disk/Projects/Research/GLAD/GLAD-Medications")
 library(ProjectTemplate)
 library(tidyverse)
-library(rlist)
-reload.project()
+load.project()
 
-# Why so many missing for cidia?
-# Need cidia script
-
-fit_model <- function(deps, indeps, covs1 = NULL, condition_fun = NULL, condition_var = NULL, dat) {
-  map(deps, function(d) {
-    if (is.numeric(dat[[d]])) {
-      fit <- fit_hurdle
-    } else {
-      fit <- fit_prop
-    }
-
-    condition_fun <- list(function(x) {
-      list(filter(x, mpg > mean(mpg)), filter(x, mpg < mean(mpg)))
-    }, function(x) {
-      list(filter(x, cyl > mean(cyl)), filter(x, cyl < mean(cyl)))
-    })
-
-    d <- list(as_tibble(mtcars))
-    for (f in condition_fun) {
-      recurr <- function(x) {
-        map(
-          x,
-          function(x) {
-            if (is.list(x) & !is.data.frame(x)) {
-              recurr(x)
-            } else {
-              f(x)
-            }
-          }
-        )
+fit_model <-
+  function(dep, indeps_list, covs = NULL,
+           data) {
+    map(indeps_list, function(indeps) {
+      if (is.numeric(dat[[dep]])) {
+        fit <- fit_hurdle
+      } else {
+        fit <- fit_prop
       }
-      d <- recurr(d)
-    }
 
-    # unlist(d)
+      m <- fit(dep, c(indeps, covs), data)
 
-    # Check for converging
-    # table(dat[["mhd_schizophrenia_numeric"]])
-    # table(dat[["mhd_schizoaffective_numeric"]])
-    # mat <- dat %>%
-    #   na_omit_dat(d, indeps) %>%
-    #   .[colnames(.) %in% indeps] %>%
-    #   map_df(as.numeric) %>%
-    #   as.matrix() %>%
-    #   Matrix::rankMatrix()
+      if (!is.null(covs)) {
+        m <- m %>%
+          filter(!Parameter %in% covs)
+      }
 
-    indeps <- indeps[indeps %in% colnames(dat)]
+      m <- format_model(m)
+      return(m)
+    })
+  }
 
-    m <- format_model(fit(dat, d, indeps))
-
-    return(m)
-  })
+fit_all <- function(deps, indeps_list, covs = NULL, data) {
+  map(deps, function(dep) {
+    fit_model(dep = dep, indeps_list = indeps_list, covs = covs, data = data)
+  }) %>%
+    setNames(labels[deps])
 }
 
-
-
-
-# Analysis 1: Side effect severity and intolerance
-# =====================================
-dat_1 <- dat %>%
-  select(-ID) %>%
-  mutate_at(
-    vars(
-      -mean_n_se,
-      -intolerance,
-      -se_rating,
-      -depression_and_anxiety,
-      -bipolar_and_schizophrenia
-    ),
-    as.numeric
-  )
-
-dat_1p <- dat_1 %>%
-  filter(
-    bipolar_and_schizophrenia != "Psychotic and bipolar disorder" &
-      bipolar_and_schizophrenia != "Only bipolar disorder" &
-      depression_and_anxiety != "Only anxiety disorder"
-  )
-
-
-indeps <- c(
-  "n_relatives",
-  "bmi",
-  "pack_year",
-  "marital",
-  "employment",
-  "bipolar_and_schizophrenia",
-  "eating_disorders_numeric",
-  "mhd.addadhd_numeric",
-  "obsessive_compulsive_disorders_numeric",
-  "mhd.personality_disorder_numeric",
-  "autism_spectrum_disorder_numeric",
-  "comorbidity_total_count_numeric",
-  "audit",
-  "time",
-  "wsas",
-  "phq9"
-  # "gad7"
+compete_indeps <- c(
+  "sex",
+  "avg_started_age",
+  "n_relatives"
 )
-
 
 sef_deps <- c("mean_n_se", "se_rating", "intolerance")
-
-covs <- c("sex", "score_phq", "score_gad", "score_pad")
-indeps_now <- c("score_phq", "score_gad", "score_wsas", "score_pad", "age")
-
-m1_1 <- fit_model(deps = sef_deps, indeps = indeps, covs = covs, dat = dat_1)
-only_sig(m1_1)
-
-m1_2 <- fit_model(sef_deps, indeps2, covs, dat_1)
-
-m1_1p <- fit_model(sef_deps, (indeps), covs1, dat_1p)
-m1_2p <- fit_model(sef_deps, indeps2, covs1, dat_1p)
-
-dat_1_now <- dat_1[last_treatment_now, ]
-dat_1p_now <- dat_1 %>%
-  filter(mhdc_bip != 1 & mhdc_depanx != 2)
-
-m1_3 <- fit_model(sef_deps, c(indeps, indeps_now), "sex", dat_1_now)
-m1_4 <- fit_model(sef_deps, c(indeps2, indeps_now), "sex", dat_1_now)
-
-m1_3p <- fit_model(
-  sef_deps, c((indeps), indeps_now),
-  "sex", dat_1p_now
-)
-m1_4p <- fit_model(sef_deps, c(indeps2, indeps_now), "sex", dat_1p_now)
-
-# No empolyment
-
-m1_1_noem <- fit_model(sef_deps, indeps_noem, covs, dat_1)
-m1_2_noem <- fit_model(sef_deps, indeps2_noem, covs, dat_1)
-
-m1_1p_noem <- fit_model(sef_deps, (indeps_noem), covs1, dat_1p)
-m1_2p_noem <- fit_model(sef_deps, indeps2_noem, covs1, dat_1p)
-
-m1_3_noem <- fit_model(sef_deps, c(indeps, indeps_now), "sex", dat_1_now)
-m1_4_noem <- fit_model(sef_deps, c(indeps2, indeps_now), "sex", dat_1_now)
-
-m1_3p_noem <- fit_model(
-  sef_deps, c((indeps), indeps_now),
-  "sex", dat_1p_now
-)
-m1_4p_noem <- fit_model(sef_deps, c(indeps2, indeps_now), "sex", dat_1p_now)
-
-# Analysis 2 Associations with effectiveness
-# =====================================
-
-dat_2 <- dat %>%
-  select(-ID) %>%
-  mutate_at(
-    vars(
-      -remission,
-      -ben_rating,
-      -n_best,
-      -first_imprv,
-      -mean_eff,
-      -depression_and_anxiety,
-      -bipolar_and_schizophrenia
-    ),
-    as.numeric
-  )
-
-indeps_eff <- c(
-  sef_deps,
-  "n_relatives",
-  "bmi",
-  "pack_year",
-  "marital",
-  "employment",
-  "bipolar_and_schizophrenia",
-  "eating_disorders_numeric",
-  "mhd.addadhd_numeric",
-  "obsessive_compulsive_disorders_numeric",
-  "mhd.personality_disorder_numeric",
-  "autism_spectrum_disorder_numeric",
-  "comorbidity_total_count_numeric",
-  "audit",
-  "time"
-)
-
-
 eff_deps <- c(
   "remission",
   "ben_rating",
@@ -193,70 +47,78 @@ eff_deps <- c(
   "mean_eff"
 )
 
-m2_1 <- fit_model(deps = eff_deps, indeps = indeps_eff, covs = covs, dat = dat_2)
-only_sig(multi_adjust(m2_1))
-
-
-dat_2_now <- dat_2[last_treatment_now, ]
-dat_2p_now <- dat_2_now %>%
-  filter(mhdc_bip != 1 & mhdc_depanx != 2)
-
-m2_3 <- fit_model(eff_deps, c(indeps_eff, indeps_now), "sex", dat_2_now)
-m2_4 <- fit_model(eff_deps, c(indeps2_eff, indeps_now), "sex", dat_2_now)
-
-m2_3p <- fit_model(
-  eff_deps, c((indeps_eff), indeps_now),
-  "sex", dat_2p_now
+covs <- "phq9"
+indeps_list <- list(
+  compete_indeps,
+  c(compete_indeps, "bmi"),
+  c(compete_indeps, "audit", "pack_year"),
+  c(
+    compete_indeps,
+    "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
+    "In_paid_employment_or_self_employed_Full_or_part_time_student",
+    "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
+    "In_paid_employment_or_self_employed_None_of_the_above",
+    "In_paid_employment_or_self_employed_Retired",
+    "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
+    "In_paid_employment_or_self_employed_Unemployed"
+  ),
+  c(
+    compete_indeps,
+    "Not_in_relationship_In_relationship",
+    "Not_in_relationship_Married"
+  ),
+  c(
+    compete_indeps,
+    "eating_disorders_numeric",
+    "mhd_addadhd_numeric",
+    "obsessive_compulsive_disorders_numeric",
+    "mhd_personality_disorder_numeric",
+    "autism_spectrum_disorder_numeric",
+    "comorbidity_total_count_numeric",
+    "Depressive_and_anxiety_disorder_Only_anxiety_disorder",
+    "Depressive_and_anxiety_disorder_Only_depressive_disorder",
+    "No_psychotic_or_bipolar_disorder_Only_bipolar_disorder",
+    "No_psychotic_or_bipolar_disorder_Only_psychotic_disorder",
+    "No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder"
+  ),
+  c(
+    compete_indeps,
+    "cidid_recurrence"
+  ),
+  c(
+    compete_indeps,
+    "time"
+  )
 )
-m2_4p <- fit_model(eff_deps, c(indeps2_eff, indeps_now), "sex", dat_2p_now)
 
-# No empolyment
+dat_sef <- dat %>%
+  select(-ID) %>%
+  mutate_at(
+    colnames(.)[!colnames(.) %in% sef_deps],
+    as.numeric
+  )
+dat_eff <- dat %>%
+  select(-ID) %>%
+  mutate_at(
+    colnames(.)[!colnames(.) %in% eff_deps],
+    as.numeric
+  )
 
-m2_1p_noem <- fit_model(eff_deps, (indeps_eff_noem), covs, dat_2p)
-m2_2p_noem <- fit_model(eff_deps, indeps2_eff_noem, covs, dat_2p)
+# Associations with side effects
+sef_models <- fit_all(sef_deps, indeps_list, data = dat_sef)
+sef_covs_models <- fit_all(sef_deps, indeps_list, covs = covs, data = dat_sef)
+# Associations with effectiveness
+eff_models <- fit_all(eff_deps, indeps_list, data = dat_eff)
+eff_covs_models <- fit_all(eff_deps, indeps_list, covs = covs, data = dat_eff)
 
-m2_1_noem <- fit_model(eff_deps, indeps_eff_noem, covs, dat_2)
-m2_2_noem <- fit_model(eff_deps, indeps2_eff_noem, covs, dat_2)
+cache("sef_models")
+cache("sef_covs_models")
+cache("eff_models")
+cache("eff_covs_models")
 
-m2_3_noem <- fit_model(
-  eff_deps, c(indeps_eff_noem, indeps_now),
-  "sex", dat_2_now
+write_xlsx_tab(multi_adjust(c(sef_models, eff_models)),
+  file = "./results/medications.xlsx", overwrite = TRUE
 )
-m2_4_noem <- fit_model(
-  eff_deps, c(indeps2_eff_noem, indeps_now),
-  "sex", dat_2_now
+write_xlsx_tab(only_sig(multi_adjust(c(sef_models, eff_models))),
+  file = "./results/medications_sig.xlsx", overwrite = TRUE
 )
-
-m2_3p_noem <- fit_model(
-  eff_deps, c((indeps_eff_noem), indeps_now),
-  "sex", dat_2p_now
-)
-m2_4p_noem <- fit_model(
-  eff_deps, c(indeps2_eff_noem, indeps_now),
-  "sex", dat_2p_now
-)
-
-for (object in ls() %>% grep("m[12]_", ., v = T)) cache(object)
-
-
-# Correlation matrix between independent variables
-# =====================================
-
-cor_mat_indeps <- polycor::hetcor(as.data.frame(dat[c(
-  union(indeps, indeps_eff),
-  indeps_now, "sex"
-)]), use = "pairwise.complete.obs", std.err = F)$correlations
-
-cor_names <- recode(
-  names(dat[c(union(indeps, indeps_eff), indeps_now, "sex")]),
-  !!!labels
-)
-dimnames(cor_mat_indeps) <- list(cor_names, cor_names)
-cache("cor_mat_indeps")
-
-cor_plot_indeps <- ggcorrplot(cor_mat_indeps,
-  type = "lower",
-  lab = TRUE,
-  title = "Correlations between indepedent variables in the dataset"
-)
-cache("cor_plot_indeps")

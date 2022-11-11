@@ -1,3 +1,5 @@
+library(fastDummies)
+
 # Sex
 sex_med <- sex_gender_sexuality_glad_clean %>%
   id_select(sex = dem.sex)
@@ -42,62 +44,91 @@ recode_unempolyed <-
 
 employment_glad_clean$dem.what_is_your_current_employment_status <-
   employment_glad_clean$dem.what_is_your_current_employment_status %>%
-  fct_recode(!!!recode_empolyed) %>%
-  fct_recode(!!!recode_unempolyed) %>%
-  factor(levels = c("Unemployed", "Employed"))
+  factor()
+#   fct_recode(!!!recode_empolyed) %>%
+#   fct_recode(!!!recode_unempolyed) %>%
+#   factor(levels = c("Unemployed", "Employed"))
 
 employment_med <- employment_glad_clean %>%
   na_convert() %>%
   # Missing 'startDate' and 'endDate'
   # na_row_remove() %>%
-  id_select(employment = dem.what_is_your_current_employment_status)
+  id_select(
+    "In_paid_employment_or_self-employed" =
+      dem.what_is_your_current_employment_status
+  ) %>%
+  dummy_cols(
+    select_columns = "In_paid_employment_or_self-employed",
+    remove_most_frequent_dummy = TRUE
+  ) %>%
+  mutate_at(
+    vars(contains("In_paid_employment_or_self-employed")),
+    factor,
+    levels = c(0, 1), labels = c("No", "Yes")
+  ) %>%
+  select(-"In_paid_employment_or_self-employed")
+
+colnames(employment_med) <- gsub(" ", "_", colnames(employment_med))
+# Hypen will be confused with minus sign in R formulae
+colnames(employment_med) <- gsub("-", "_", colnames(employment_med))
+colnames(employment_med) <- gsub("/", "_", colnames(employment_med))
 
 # Marital status
-recode_unmarried <-
+recode_norelationship <-
   c(
     "Single",
     "Divorced",
     "Widowed",
     "Separated"
   ) %>%
-  setNames(rep("Unmaried", length(.)))
+  setNames(rep("Not in relationship", length(.)))
 
 
 recode_married <-
   c(
-    # Separated into three levels
     "Married",
-    "Married/civil partnership",
-
-    # Qualtrics error
-    "Relationship (living together)",
-    "Relationship (not living together)",
-    # Combine with the above
-    "Steady living together",
-    "Steady not living together"
+    "Married/civil partnership"
   ) %>%
   setNames(rep("Married", length(.)))
 
 
+recode_inrelationship <-
+  c(
+    # Qualtrics error
+    "Relationship (living together)",
+    "Relationship (not living together)"
+    # Combine with the above
+    # "Steady living together",
+    # "Steady not living together"
+  ) %>%
+  setNames(rep("In relationship", length(.)))
+
 marital_status_glad_clean$dem.what_is_your_current_maritalrelationship_status <-
   marital_status_glad_clean$dem.what_is_your_current_maritalrelationship_status %>%
   fct_recode(!!!recode_married) %>%
-  fct_recode(!!!recode_unmarried) %>%
-  fct_recode(NULL = "Other")
+  fct_recode(!!!recode_norelationship) %>%
+  fct_recode(!!!recode_inrelationship) %>%
+  fct_recode(NULL = "Other") %>%
+  factor()
 
 marital_status_med <- marital_status_glad_clean %>%
   na_convert() %>%
   na_row_remove() %>%
-  id_select(marital = dem.what_is_your_current_maritalrelationship_status)
-
+  id_select(Not_in_relationship = dem.what_is_your_current_maritalrelationship_status) %>%
+  dummy_cols(
+    select_columns = "Not_in_relationship",
+    remove_most_frequent_dummy = TRUE
+  ) %>%
+  select(-"Not_in_relationship")
+colnames(marital_status_med) <- gsub(" ", "_", colnames(marital_status_med))
 
 # MHD
 mhd_med <- mhd_glad_clean_tmp %>%
   na_convert() %>%
   na_row_remove() %>%
   id_select(
-    depression_and_anxiety,
-    bipolar_and_schizophrenia,
+    "Depressive_and_anxiety_disorder" = depression_and_anxiety,
+    "No_psychotic_or_bipolar_disorder" = bipolar_and_schizophrenia,
     eating_disorders_numeric,
     # Suggest a change in uniform names (dot/slash) in ilovedata?
     mhd_addadhd_numeric = mhd.addadhd_numeric,
@@ -105,7 +136,27 @@ mhd_med <- mhd_glad_clean_tmp %>%
     mhd_personality_disorder_numeric = mhd.personality_disorder_numeric,
     autism_spectrum_disorder_numeric,
     comorbidity_total_count_numeric
-  )
+  ) %>%
+  dummy_cols(
+    select_columns = "Depressive_and_anxiety_disorder",
+    remove_most_frequent_dummy = TRUE
+  ) %>%
+  mutate_at(
+    vars(contains("Depressive_and_anxiety_disorder")),
+    factor,
+    levels = c(0, 1), labels = c("No", "Yes")
+  ) %>%
+  select(-Depressive_and_anxiety_disorder) %>%
+  dummy_cols(
+    select_columns = "No_psychotic_or_bipolar_disorder",
+    remove_most_frequent_dummy = TRUE
+  ) %>%
+  mutate_at(vars(contains("No_psychotic_or_bipolar_disorder")),
+    factor,
+    levels = c(0, 1), labels = c("No", "Yes")
+  ) %>%
+  select(-No_psychotic_or_bipolar_disorder)
+colnames(mhd_med) <- gsub(" ", "_", colnames(mhd_med))
 
 # AUDIT
 audit_med <- audit_glad_clean %>%
@@ -129,7 +180,10 @@ gad7_med <- gad7_glad_clean %>%
 
 # PHQ9
 phq9_med <- phq9_glad_clean %>%
-  id_select(phq9 = phq9.sum_score, phq9_bin = phq9.binary_depression_numeric)
+  id_select(
+    phq9 = phq9.sum_score
+    # phq9_bin = phq9.binary_depression_numeric
+  )
 
 # WSAS
 wsas_med <- wsas_glad_clean %>%
@@ -271,9 +325,14 @@ started_age <- antidepressants_why_glad_med_id %>%
     x
   })
 
+# Average started age
+avg_started_age <- started_age[-1] %>%
+      rowMeans(na.rm = T) %>%
+      bind_cols(started_age["ID"], avg_started_age = .) %>%
+      mutate(avg_started_age = avg_started_age/10)
+
 # First improvement duration and likelihood of remission
 antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
-  select(-contains("a_different_antidepressants")) %>%
   na_convert() %>%
   na_row_remove()
 
@@ -348,12 +407,11 @@ time <- antidepressants_why_glad_med_id %>%
   ) %>%
   id_select(time)
 
-
 dat_list <- list(
   n_meds,
   sex_med,
-  age_med,
-  years_of_education_med,
+  avg_started_age,
+  # years_of_education_med,
   employment_med,
   signup_bmi_height_weight_med,
   marital_status_med,
@@ -378,33 +436,45 @@ dat_list <- list(
 )
 
 dat <- reduce(dat_list, left_join) %>%
-  filter(depression_and_anxiety != "No depressive or anxiety disorder") %>%
+  filter(
+    Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder ==
+      "No"
+  ) %>%
+  select(-Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder) %>%
   # Remove unused levels
   mutate_if(is.factor, droplevels)
-
 
 labels <- c(
   "Number of antidepressantss",
   "Sex",
-  "Age/10",
-  "Years of education",
-  "Employment",
+  "Average started age/10",
+  # "Years of education",
+  "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
+  "Full or part-time student v.s In paid employment or self-employed",
+  "Looking after home and/or family v.s In paid employment or self-employed",
+  "None of the above v.s In paid employment or self-employed",
+  "Retired v.s In paid employment or self-employed",
+  "Unable to work because of sickness or disability v.s In paid employment or self-employed",
+  "Unemployed v.s. In paid employment or self-employed",
   "BMI (kg/m^2)",
-  "Marital status",
-  "Depressive and anxiety disorders",
-  "Psychotic and bipolar disorders",
+  "In relationship v.s Not in relationship",
+  "Married v.s Not in relationship",
   "Eating disorders",
   "ADHD",
   "Obsessive compulsive disorders",
   "Personality disorders",
   "Autism spectrum disorders",
   "Number of comorbidities",
-  "### AUDIT score",
+  "Only anxiety disorder v.s Depressive and anxiety disorder",
+  "Only depressive disorder v.s Depressive and anxiety disorder",
+  "Only bipolar disorder v.s No psychotic or bipolar disorder",
+  "Only psychotic disorder v.s No psychotic or bipolar disorder",
+  "Psychotic and bipolar disorder v.s No psychotic or bipolar disorder",
+  "Alcohol use disorder",
   "Number of depressive disorder episodes",
   "Current anxiety",
   "Current depression",
-  "Current depression binary",
-  "Work and social adjustment",
+  "Work and social impairment",
   "Number of relatives with psychiatric disorders",
   "Pack years of cigarettes smoked",
   "Number of best aspects",
