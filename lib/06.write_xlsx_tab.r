@@ -19,13 +19,26 @@ write_xlsx_tab <- function(models, ...) {
         rows = sig_pos[, 1] + start_row,
         cols = sig_pos[, 2]
       )
-      # Format p-values
-      model <- model %>%
-        mutate_at(vars(matches("^p", ignore.case = FALSE)), scales::pvalue)
-      # Only write the column names of the first table
-      if (start_row != 1) {
+
+      sample_size <- attr(model, "n")
+
+      # Format p-value columns
+      pcols_i <- grep("^p", colnames(model))
+      model[pcols_i] <- modify(model[pcols_i], ~ scales::pvalue(.x))
+
+      if (start_row == 1) {
+        pcolnms_fmt <- paste0(
+          colnames(model)[pcols_i],
+          "(N = ", sample_size, ")"
+        )
+        colnames(model)[pcols_i] <- pcolnms_fmt
+      } else {
+        # Only write the column names of the first table
+        # But add sample size
         colnames(model) <- rep("", times = ncol(model))
+        colnames(model)[pcols_i] <- paste0("(N = ", sample_size, ")")
       }
+
       writeData(wb,
         sheet = dep, model,
         startRow = start_row, headerStyle = header_sty
