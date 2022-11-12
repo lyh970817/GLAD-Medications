@@ -117,6 +117,7 @@ sef_covs_models <- fit_all(sef_deps, indeps_list[1:8],
 eff_models <- fit_all(eff_deps, indeps_list, data = dat_eff)
 eff_covs_models <- fit_all(eff_deps, indeps_list, covs = covs, data = dat_eff)
 
+cache("compete_indeps")
 cache("sef_models")
 cache("sef_covs_models")
 cache("eff_models")
