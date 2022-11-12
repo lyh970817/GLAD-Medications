@@ -56,8 +56,19 @@ write_xlsx_tab <- function(models, ...) {
       start_row <- start_row + nrows
     }
 
-    saveWorkbook(wb = wb, ...)
+    writeData(wb,
+      sheet = dep,
+      "Results adjusted by the number of outcomes",
+      xy = c(1, start_row + 1)
+    )
+    # Add style to "Results adjusted by the number of outcomes"
+    addStyle(wb,
+      sheet = dep, style = header_sty,
+      rows = start_row + 1,
+      cols = 1
+    )
   })
 
+  saveWorkbook(wb = wb, ...)
   invisible(wb)
 }
