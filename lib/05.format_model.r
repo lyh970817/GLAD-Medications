@@ -41,8 +41,8 @@ format_model <- function(model) {
     )
   }
 
-  attr(tab, "n") <- attr(model, "n")
   attr(tab, "dep") <- attr(model, "dep")
+  attr(tab, "n") <- attr(model, "n")
 
   tab
 }

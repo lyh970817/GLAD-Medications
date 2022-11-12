@@ -1,9 +1,8 @@
 setwd("~/Disk/Projects/Research/GLAD/GLAD-Medications")
-
-library(ProjectTemplate)
-library(tidyverse)
-library(ggcorrplot)
-library(polycor)
+require(ProjectTemplate)
+require(tidyverse)
+require(ggcorrplot)
+require(polycor)
 load.project()
 
 cor_mat <- hetcor(

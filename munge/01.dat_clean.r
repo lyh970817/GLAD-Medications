@@ -1,4 +1,4 @@
-library(fastDummies)
+require(fastDummies)
 
 # Sex
 sex_med <- sex_gender_sexuality_glad_clean %>%
@@ -228,7 +228,6 @@ n_best <-
   ungroup() %>%
   id_select(n_best) %>%
   mutate(n_best = factor(n_best, ordered = TRUE))
-
 
 # Overall benefit rating
 ben_rating <- antidepressants_ben_glad_med_id %>%

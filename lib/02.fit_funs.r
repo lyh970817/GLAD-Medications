@@ -2,16 +2,16 @@ require(ordinal)
 require(parameters)
 
 select_model_fields <- function(model, stp = NULL) {
-  m <- parameters(model) %>%
+  m_ptrs <- parameters(model) %>%
     as_tibble() %>%
     mutate_at(vars(Coefficient, CI_low, CI_high), exp) %>%
-    select(c("Parameter", "Coefficient", "CI_low", "CI_high", "p"))
+    select(Parameter, Coefficient, CI_low, CI_high, p)
 
   if (!is.null(stp)) {
     # Specify which part of the model
-    mutate(m, step = stp)
+    mutate(m_ptrs, step = stp)
   } else {
-    m
+    m_ptrs
   }
 }
 
@@ -38,15 +38,13 @@ fit_hurdle <- function(dep, indeps, data) {
   # print(termplot(m0, partial.resid = T, dataa = data))
   # print(termplot(m, partial.resid = T, dataa = data_gamma))
 
-
   ms <- select_model_fields(m0, stp = 1) %>%
     bind_rows(select_model_fields(m, stp = 2))
 
   # Store dependent variable
   attr(ms, "dep") <- dep
   # Store sample size
-  n <- c(nrow(data), nrow(data_gamma))
-  attr(ms, "n") <- n
+  attr(ms, "n") <- c(nrow(data), nrow(data_gamma))
 
   return(ms)
 }
@@ -62,7 +60,7 @@ fit_prop <- function(dep, indeps, data) {
   # Store dependent variable
   attr(m, "dep") <- dep
   # Store sample size
-  n <- nrow(dat)
-  attr(m, "n") <- n
+  attr(m, "n") <- nrow(data)
+
   m
 }

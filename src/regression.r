@@ -1,6 +1,6 @@
 setwd("~/Disk/Projects/Research/GLAD/GLAD-Medications")
-library(ProjectTemplate)
-library(tidyverse)
+require(ProjectTemplate)
+require(tidyverse)
 load.project()
 
 fit_model <-
