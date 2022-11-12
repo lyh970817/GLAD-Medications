@@ -325,13 +325,13 @@ started_age <- antidepressants_why_glad_med_id %>%
     x
   })
 
-# Average started age
-avg_started_age <- started_age[-1] %>%
+# Average starting age
+avg_start_age <- started_age[-1] %>%
       rowMeans(na.rm = T) %>%
-      bind_cols(started_age["ID"], avg_started_age = .) %>%
-      mutate(avg_started_age = avg_started_age/10)
+      bind_cols(started_age["ID"], avg_start_age = .) %>%
+      mutate(avg_start_age = avg_start_age/10)
 
-# First improvement duration and likelihood of remission
+# First improvement duration and occurrence of remission
 antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
   na_convert() %>%
   na_row_remove()
@@ -410,7 +410,7 @@ time <- antidepressants_why_glad_med_id %>%
 dat_list <- list(
   n_meds,
   sex_med,
-  avg_started_age,
+  avg_start_age,
   # years_of_education_med,
   employment_med,
   signup_bmi_height_weight_med,
@@ -447,7 +447,7 @@ dat <- reduce(dat_list, left_join) %>%
 labels <- c(
   "Number of antidepressantss",
   "Sex",
-  "Average started age/10",
+  "Average starting age/10",
   # "Years of education",
   "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
   "Full or part-time student v.s In paid employment or self-employed",
@@ -478,14 +478,14 @@ labels <- c(
   "Number of relatives with psychiatric disorders",
   "Pack years of cigarettes smoked",
   "Number of best aspects",
-  "Overall benefits rating",
-  "Overall side effects rating",
+  "Benefit rating",
+  "Side effect severity rating",
   "Mean number of side effects",
-  "Likelihood of intolerance",
-  "Average self-report efficacy",
+  "Treatment discontinuation",
+  "Average self-report effectiveness",
   "First improvement duration",
-  "Likelihood of remission",
-  "Time on antidepressantss"
+  "Occurence of remission",
+  "Total duration on antidepressantss"
 ) %>% setNames(colnames(dat)[-1])
 
 cache("labels")

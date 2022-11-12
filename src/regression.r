@@ -34,7 +34,7 @@ fit_all <- function(deps, indeps_list, covs = NULL, data) {
 
 compete_indeps <- c(
   "sex",
-  "avg_started_age",
+  "avg_start_age",
   "n_relatives"
 )
 
