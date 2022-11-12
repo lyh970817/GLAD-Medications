@@ -9,6 +9,14 @@ write_xlsx_tab <- function(models, ...) {
     setColWidths(wb, sheet = dep, cols = 2:5, widths = 30)
     start_row <- 1
     for (model in models_indeps) {
+      # Already have a column with coefficients and CI
+      # Remove unnecessary columns
+      model <- model %>%
+        select(
+          Parameter, matches("^Coefficient_CI"),
+          matches("^p")
+        )
+
       # Find positions of significant p-values
       sig_pos <- which(model < 0.05, arr.ind = T)
       # Style for significant p-values

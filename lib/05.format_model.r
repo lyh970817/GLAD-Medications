@@ -6,14 +6,19 @@ format_model <- function(model) {
 
   combine_cicoef <- function(tab) {
     # Combine regression coefficient and confidence intervals
+
     tab["Coefficient_CI"] <- paste0(
-      tab[["Coefficient"]],
+      format_digit(tab[["Coefficient"]]),
       "[",
-      paste(tab[["CI_low"]], tab[["CI_high"]], sep = ", "),
+      paste(
+        format_digit(tab[["CI_low"]]),
+        format_digit(tab[["CI_high"]]),
+        sep = ", "
+      ),
       "]"
     )
-    tab %>%
-      select(-Coefficient, -CI_low, -CI_high)
+
+    tab
   }
 
   tab <- model %>%
@@ -21,8 +26,6 @@ format_model <- function(model) {
     filter(!grepl("Intercept", Parameter)) %>%
     # Intercept for clm
     filter(!grepl("\\d\\|\\d", Parameter)) %>%
-    # Don't format p, format when writing to excel
-    mutate_at(vars(c(Coefficient, CI_low, CI_high)), ~ format_digit(.)) %>%
     combine_cicoef() %>%
     mutate(Parameter = recode(Parameter, !!!labels))
 
