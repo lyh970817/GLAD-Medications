@@ -88,6 +88,10 @@ indeps_list <- list(
   c(
     compete_indeps,
     "time"
+  ),
+  c(
+    compete_indeps,
+    sef_deps
   )
 )
 
@@ -105,8 +109,10 @@ dat_eff <- dat %>%
   )
 
 # Associations with side effects
-sef_models <- fit_all(sef_deps, indeps_list, data = dat_sef)
-sef_covs_models <- fit_all(sef_deps, indeps_list, covs = covs, data = dat_sef)
+sef_models <- fit_all(sef_deps, indeps_list[1:8], data = dat_sef)
+sef_covs_models <- fit_all(sef_deps, indeps_list[1:8],
+  covs = covs, data = dat_sef
+)
 # Associations with effectiveness
 eff_models <- fit_all(eff_deps, indeps_list, data = dat_eff)
 eff_covs_models <- fit_all(eff_deps, indeps_list, covs = covs, data = dat_eff)
