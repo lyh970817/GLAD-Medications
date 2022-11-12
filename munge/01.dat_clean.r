@@ -481,7 +481,7 @@ labels <- c(
   "Side effect severity rating",
   "Mean number of side effects",
   "Treatment discontinuation",
-  "Average self-report effectiveness",
+  "Average effectiveness",
   "First improvement duration",
   "Occurence of remission",
   "Total duration on antidepressantss"
