@@ -13,7 +13,7 @@ write_xlsx_tab <- function(models, ...) {
       # Remove unnecessary columns
       model <- model %>%
         select(
-          Parameter, matches("^Coefficient_CI"),
+          Parameter, matches("^Coeff_CI"),
           matches("^p")
         )
 

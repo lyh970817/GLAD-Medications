@@ -7,7 +7,7 @@ format_model <- function(model) {
   combine_cicoef <- function(tab) {
     # Combine regression coefficient and confidence intervals
 
-    tab["Coefficient_CI"] <- paste0(
+    tab["Coeff_CI"] <- paste0(
       format_digit(tab[["Coefficient"]]),
       "[",
       paste(
