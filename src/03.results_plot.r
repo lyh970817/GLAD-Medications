@@ -4,6 +4,7 @@ require(tidyverse)
 load.project()
 
 plot_models <- function(models, theme, file) {
+  models_plot <- only_sig(models_plot, discard_row = FALSE)
   models_plot <- map(models, function(models_indeps) {
     model_indeps_plot <- map(
       models_indeps[-1], function(model) {
@@ -12,23 +13,6 @@ plot_models <- function(models, theme, file) {
           filter(!Parameter %in% labels[compete_indeps]) %>%
           # mutate(n = paste(sample_size, collapse = ", ")) %>%
           mutate(Parameter = str_remove(Parameter, "v\\.s.*$"))
-
-        if ("p" %in% colnames(model)) {
-          model_plot[
-            model_plot$p > 0.05,
-            c("CI_low", "CI_high", "Coefficient")
-          ] <- NA
-        } else {
-          model_plot[
-            model_plot$p_logistic > 0.05,
-            c("CI_low_logistic", "CI_high_logistic", "Coefficient_logistic")
-          ] <- NA
-          model_plot[
-            model_plot$p_gamma > 0.05,
-            c("CI_low_gamma", "CI_high_gamma", "Coefficient_gamma")
-          ] <- NA
-        }
-
         model_plot
       }
     ) %>%
