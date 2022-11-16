@@ -445,7 +445,7 @@ dat <- reduce(dat_list, left_join) %>%
 
 labels <- c(
   "Number of antidepressantss",
-  "Sex",
+  "Sex (female)",
   "Average starting age/10",
   # "Years of education",
   "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
