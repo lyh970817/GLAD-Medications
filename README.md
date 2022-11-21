@@ -31,5 +31,5 @@ questionnaire in the **Genetic Links to Depression and Anxiety (GLAD)** study.
 
 * `config` contains setting of the `ProjectTemplate` package.
 
-
+* **TODO**: add "a different antidepressant" (duplicated columns in 'why')
 
