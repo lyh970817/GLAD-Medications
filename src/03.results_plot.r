@@ -46,10 +46,10 @@ cache("plot_sef")
 cache("plot_eff")
 
 ggsave(
-  filename = "./graphs/sef.pdf", plot = plot_sef,
+  filename = "./graphs/sef.png", plot = plot_sef,
   height = 15, width = 10
 )
 ggsave(
-  filename = "./graphs/eff.pdf", plot = plot_eff,
+  filename = "./graphs/eff.png", plot = plot_eff,
   height = 20, width = 10
 )
