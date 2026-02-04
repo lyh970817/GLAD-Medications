@@ -1,89 +1,96 @@
-require(forestploter)
-require(gridExtra)
-plot_models <- function(models, theme) {
-  models_plot <- map(models, function(models_indeps) {
-    model_indeps_plot <- map(
-      models_indeps[-1], function(model) {
-        # sample_size <- attr(model, "n")
+plot_models_publication <- function(models) {
+  # --- 1. DATA EXTRACTION & TIDYING ---
+  extract_model_data <- function(df, outcome_label) {
+    if (!is.data.frame(df)) {
+      return(NULL)
+    }
 
-        model_plot <- model %>%
-          filter(!Parameter %in% labels[compete_indeps]) %>%
-          # mutate(n = paste(sample_size, collapse = ", ")) %>%
-          mutate(Parameter = str_remove(Parameter, "v\\.s.*$"))
+    df <- df %>% mutate(Parameter = str_remove(Parameter, "v\\.s.*$"))
 
-        model_plot
-      }
-    ) %>%
-      bind_rows(models_indeps[[1]], .)
+    if ("Coefficient_logistic" %in% names(df)) {
+      part1 <- df %>%
+        select(Parameter,
+          Estimate = Coefficient_logistic,
+          CI_low = CI_low_logistic, CI_high = CI_high_logistic, p = p_logistic
+        ) %>%
+        mutate(Outcome = paste(outcome_label, "(Logistic)"))
 
+      part2 <- df %>%
+        select(Parameter,
+          Estimate = Coefficient_gamma,
+          CI_low = CI_low_gamma, CI_high = CI_high_gamma, p = p_gamma
+        ) %>%
+        mutate(Outcome = paste(outcome_label, "(Gamma)"))
 
-    model_indeps_plot
-  })
-
-
-  get_plot_value_list <- function(models_plot, which) {
-    map(models_plot, function(model_plot) {
-      select(model_plot, matches(paste0("^", which),
-        ignore.case = FALSE
-      )) %>%
-        as.list()
-    }) %>%
-      list.flatten()
+      bind_rows(part1, part2)
+    } else {
+      df %>%
+        select(Parameter,
+          Estimate = Coefficient,
+          CI_low = CI_low, CI_high = CI_high, p = p
+        ) %>%
+        mutate(Outcome = outcome_label)
+    }
   }
 
+  plot_data <- imap_dfr(models, function(sub_models, outcome_name) {
+    if (is.data.frame(sub_models)) sub_models <- list(sub_models)
+    map_dfr(sub_models, function(item) {
+      extract_model_data(item, outcome_name)
+    })
+  })
 
-  coefficients_list <- get_plot_value_list(models_plot, which = "Coefficient")
-  p_list <- get_plot_value_list(models_plot, which = "p")
-  ci_high_list <- get_plot_value_list(models_plot, which = "CI_high")
-  ci_low_list <- get_plot_value_list(models_plot, which = "CI_low")
+  # --- 2. PREPARATION ---
+  plot_data <- plot_data %>%
+    mutate(
+      Significance = ifelse(p < 0.05, "Significant", "Insignificant"),
+      Outcome = as.factor(Outcome),
+      Parameter = factor(Parameter, levels = rev(unique(Parameter)))
+    )
 
-  xlim <- c(
-    min(unlist(ci_low_list), na.rm = T),
-    max(unlist(ci_high_list), na.rm = T)
-  ) +
-    c(-0.2, 0.2)
+  dodge_width <- 0.7
 
-  forest(tibble(
-    Parameter = models_plot[[1]]$Parameter,
-    ` ` = paste(rep(" ", 40), collapse = " ")
-  ),
-  est = coefficients_list,
-  lower = ci_low_list,
-  upper = ci_high_list,
-  sizes = 0.8,
-  xlim = xlim,
-  ci_column = 2,
-  ref_line = 1,
-  theme = theme
-  )
-}
+  # --- 3. AESTHETICS ---
+  color_palette <- c("Significant" = "#E69F00", "Insignificant" = "#7F7F7F")
+  shape_palette <- c(16, 15, 17, 18, 4, 8)
 
-plot_prop <- function(model_plot) {
-  tm <- forest_theme(
-    base_size = 10,
-    refline_lty = "dashed",
-    ci_pch = 15,
-    ci_col = "#377eb8",
-    footnote_col = "blue",
-    vertline_lty = "dashed",
-    vertline_col = "#d6604d",
-  )
+  # --- 4. PLOTTING ---
+  ggplot(plot_data, aes(x = Estimate, y = Parameter, group = Outcome)) +
+    geom_vline(xintercept = 1, linetype = "solid", color = "black", linewidth = 0.4) +
 
-  xlim <- c(
-    min(model_plot$CI_low, na.rm = T),
-    max(model_plot$CI_high, na.rm = T)
-  ) +
-    c(-0.2, 0.2)
+    # FIXED: Use geom_errorbar instead of geom_errorbarh
+    # Note: 'width' here controls the height of the caps on the Y-axis
+    geom_errorbar(
+      aes(xmin = CI_low, xmax = CI_high, color = Significance),
+      width = 0.2,
+      linewidth = 0.6,
+      position = position_dodge(width = dodge_width)
+    ) +
+    geom_point(
+      aes(shape = Outcome, color = Significance),
+      size = 3,
+      stroke = 0.8,
+      position = position_dodge(width = dodge_width)
+    ) +
+    scale_color_manual(values = color_palette, guide = "none") +
+    scale_shape_manual(values = shape_palette, name = NULL) +
+    guides(shape = guide_legend(nrow = 2)) +
 
-  forest(model_plot[c("Parameter", " ")],
-    est = model_plot$Coefficient,
-    lower = model_plot$CI_low,
-    upper = model_plot$CI_high,
-    sizes = 0.8,
-    xlim = xlim,
-    title = labels[attr(model_plot, "dep")],
-    ci_column = 2,
-    ref_line = 1,
-    theme = tm
-  )
+    # Use coord_cartesian to zoom without deleting data
+    coord_cartesian(xlim = c(NA, 2), clip = "off") +
+    labs(x = "Estimate (95% CI)", y = NULL) +
+    theme_minimal(base_size = 16, base_family = "sans") +
+    theme(
+      axis.line.x = element_line(color = "black", linewidth = 0.5),
+      axis.text.y = element_text(color = "black", face = "bold", margin = margin(r = 10)),
+      axis.text.x = element_text(color = "black"),
+      axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
+      panel.grid.major.y = element_line(color = "grey85", linewidth = 0.5),
+      legend.position = "bottom",
+      legend.justification = "center",
+      legend.margin = margin(t = 10),
+      plot.margin = margin(t = 10, r = 20, b = 10, l = 10)
+    )
 }

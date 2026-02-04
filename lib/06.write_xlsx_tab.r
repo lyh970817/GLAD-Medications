@@ -8,6 +8,7 @@ write_xlsx_tab <- function(models, ...) {
     setColWidths(wb, sheet = dep, cols = 1, widths = 90)
     setColWidths(wb, sheet = dep, cols = 2:5, widths = 30)
     start_row <- 1
+
     for (model in models_indeps) {
       # Already have a column with coefficients and CI
       # Remove unnecessary columns

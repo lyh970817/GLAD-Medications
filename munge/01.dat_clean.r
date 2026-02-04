@@ -22,10 +22,10 @@ years_of_education_med <- years_of_education_glad_clean %>%
   na_convert() %>%
   # Missing 'startDate' and 'endDate'
   # na_row_remove() %>%
-  id_select(education_yrs = dem.years_schoolplease_include_preschool.txt)
+  id_select(education_yrs = `dem.years_schoolplease_include_preschool.txt`)
 
 # Employment
-recode_empolyed <- c(
+recode_employed <- c(
   "In paid employment or self-employed",
   "Retired",
   "Looking after home and/or family",
@@ -45,7 +45,7 @@ recode_unempolyed <-
 employment_glad_clean$dem.what_is_your_current_employment_status <-
   employment_glad_clean$dem.what_is_your_current_employment_status %>%
   factor()
-#   fct_recode(!!!recode_empolyed) %>%
+#   fct_recode(!!!recode_employed) %>%
 #   fct_recode(!!!recode_unempolyed) %>%
 #   factor(levels = c("Unemployed", "Employed"))
 
@@ -193,7 +193,7 @@ wsas_med <- wsas_glad_clean %>%
 # Needs updating ilovedata script
 
 n_relatives <- fh_mhd_f_glad_dat %>%
-  full_join(fh_mhd2_f_glad_dat) %>%
+  full_join(fh_mhd2_f_glad_dat, by = c("externalDataReference", "startDate", "endDate")) %>%
   select(ID = externalDataReference, everything()) %>%
   mutate(sample = "glad") %>%
   mutate(across(starts_with("fh_"), str_extract, "\\d*")) %>%
@@ -247,9 +247,9 @@ prescription_antidepressants_id$prescription.a_different_antidepressants <- NULL
 
 n_meds <- prescription_antidepressants_id %>%
   na_convert() %>%
-  na_row_remove() %>%
+  # na_row_remove() %>%
   rowwise() %>%
-  mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine))) %>%
+  mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine), na.rm = TRUE)) %>%
   id_select(n_meds) %>%
   ungroup()
 
@@ -269,7 +269,7 @@ mean_n_se <- sideeffects_antidepressants_id %>%
       ), na.rm = T)
   ) %>%
   id_select(n_se) %>%
-  left_join(n_meds) %>%
+  left_join(n_meds, by = "ID") %>%
   mutate(mean_n_se = n_se / n_meds) %>%
   id_select(mean_n_se) %>%
   ungroup()
@@ -305,7 +305,7 @@ mean_eff <- antidepressants_eff_glad_med_id %>%
       antidepressants_eff.antidepressants_work_doesdid.vortioxetine), na.rm = T)
   ) %>%
   ungroup() %>%
-  left_join(n_meds) %>%
+  left_join(n_meds, by = "ID") %>%
   mutate(mean_eff = total_eff / n_meds) %>%
   id_select(mean_eff)
 
@@ -326,9 +326,9 @@ started_age <- antidepressants_why_glad_med_id %>%
 
 # Average starting age
 avg_start_age <- started_age[-1] %>%
-      rowMeans(na.rm = T) %>%
-      bind_cols(started_age["ID"], avg_start_age = .) %>%
-      mutate(avg_start_age = avg_start_age/10)
+  rowMeans(na.rm = T) %>%
+  bind_cols(started_age["ID"], avg_start_age = .) %>%
+  mutate(avg_start_age = avg_start_age / 10)
 
 # First improvement duration and occurrence of remission
 antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
@@ -338,13 +338,13 @@ antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
 
 # First improvement duration
 started_age_t <- started_age %>%
-  left_join(antidepressants_imprv_glad_med_id["ID"], .) %>%
+  left_join(antidepressants_imprv_glad_med_id["ID"], ., by = "ID") %>%
   select(-ID) %>%
-  transpose()
+  purrr::transpose()
 
 imprv_t <- antidepressants_imprv_glad_med_id %>%
   select(contains("experienced_improvement_symptoms_long")) %>%
-  transpose()
+  purrr::transpose()
 
 first_imprv <- map2_dbl(
   started_age_t, imprv_t,
@@ -360,7 +360,248 @@ first_imprv <- map2_dbl(
   tibble(antidepressants_imprv_glad_med_id["ID"], first_imprv = .) %>%
   mutate(first_imprv = factor(first_imprv, ordered = TRUE))
 
-# browser()
+# Disabilities and illnesses
+disability_illness_bin <- disability_illness_glad_clean[
+  c("ID", "sample", "startDate", "endDate", "dem.disability_numeric")
+] %>%
+  na_convert() %>%
+  na_row_remove()
+
+illnesses <- c(
+  # "dem.metal_implants_numeric",
+  "dem.epilepsy_or_convulsions_numeric",
+  "dem.migraines_numeric",
+  "dem.multiple_sclerosis_numeric",
+  # Rank deficient
+  "dem.parkinsons_disease_numeric",
+  "dem.severe_memory_loss_numeric",
+  # "dem.neurological_none_numeric", "dem.neurological_dont_know_numeric",
+  # "dem.neurological_prefer_not_to_answer_numeric",
+  "dem.hay_fever_numeric",
+  "dem.drug_allergy_numeric", "dem.food_allergy_numeric",
+  "dem.other_allergy_numeric", "dem.osteoporosis_numeric",
+  "dem.osteoarthritis_numeric", "dem.rheumatoid_arthritis_numeric",
+  "dem.other_arthritis_numeric",
+  # "dem.allergy_none_numeric",
+  "dem.asthma_numeric", "dem.emphysema_or_chronic_bronchitis_numeric",
+  "dem.heart_attack_or_angina_numeric", "dem.high_blood_cholesterol_numeric",
+  "dem.high_blood_pressure_numeric", "dem.atrial_fibrillation_numeric",
+  "dem.stroke_numeric",
+  "dem.crohns_disease_numeric", "dem.ulcerative_colitis_numeric",
+  "dem.coeliac_disease_numeric", "dem.diabetes_type_1_numeric",
+  "dem.diabetes_type_2_numeric",
+  # "dem.pain_due_to_diabetes_numeric",
+  "dem.pain_due_to_virus_numeric",
+  "dem.breast_cancer_numeric",
+  # Rank deficient
+  "dem.lung_cancer_numeric",
+  "dem.stomach_cancer_numeric",
+  "dem.colon_cancer_numeric",
+  "dem.uterus_cancer_numeric",
+  "dem.prostate_cancer_numeric",
+  "dem.psoriasis_numeric",
+  "dem.vitiligo_numeric", "dem.eczema_numeric",
+  "dem.thyroid_disease_numeric"
+  # "dem.listed_previously_told_illness_numeric"
+  # All NA
+  # "dem.brain_tumour_numeric",
+  # "dem.ankylosing_spondylitis_numeric", "dem.hypermobility_numeric",
+  # "dem.pots_numeric", "dem.diabetes_type_1_early_onset_numeric",
+  # "dem.diabetes_type_1_late_onset_numeric",
+  # "dem.diabetes_type_2_late_onset_numeric",
+  # "dem.pcos_numeric"
+)
+# illnesses <- c(
+#   "dem.metal_implants_numeric", "dem.epilepsy_or_convulsions_numeric",
+#   "dem.migraines_numeric", "dem.multiple_sclerosis_numeric",
+#   # Rank deficient
+#   "dem.parkinsons_disease_numeric",
+#   "dem.severe_memory_loss_numeric",
+#   # "dem.neurological_none_numeric", "dem.neurological_dont_know_numeric",
+#   # "dem.neurological_prefer_not_to_answer_numeric",
+#   "dem.hay_fever_numeric",
+#   "dem.drug_allergy_numeric", "dem.food_allergy_numeric",
+#   "dem.other_allergy_numeric", "dem.osteoporosis_numeric",
+#   "dem.osteoarthritis_numeric", "dem.rheumatoid_arthritis_numeric",
+#   "dem.other_arthritis_numeric",
+#   # "dem.allergy_none_numeric",
+#   "dem.asthma_numeric", "dem.emphysema_or_chronic_bronchitis",
+#   "dem.heart_attack_or_angina_numeric", "dem.high_blood_cholesterol_numeric",
+#   "dem.high_blood_pressure_numeric", "dem.atrial_fibrillation_numeric",
+#   "dem.stroke_numeric",
+#   "dem.crohns_disease_numeric", "dem.ulcerative_colitis_numeric",
+#   "dem.coeliac_disease_numeric", "dem.diabetes_type_1_numeric",
+#   "dem.diabetes_type_2_numeric", "dem.pain_due_to_diabetes_numeric",
+#   "dem.pain_due_to_virus_numeric",
+#   "dem.breast_cancer_numeric",
+#   # Rank deficient
+#   "dem.lung_cancer_numeric",
+#   "dem.stomach_cancer_numeric",
+#   "dem.colon_cancer_numeric",
+#   "dem.uterus_cancer_numeric",
+#   "dem.prostate_cancer_numeric",
+#   "dem.psoriasis_numeric",
+#   "dem.vitiligo_numeric", "dem.eczema_numeric",
+#   "dem.thyroid_disease_numeric"
+#   # "dem.listed_previously_told_illness_numeric"
+#   # All NA
+#   # "dem.brain_tumour_numeric",
+#   # "dem.ankylosing_spondylitis_numeric", "dem.hypermobility_numeric",
+#   # "dem.pots_numeric", "dem.diabetes_type_1_early_onset_numeric",
+#   # "dem.diabetes_type_1_late_onset_numeric",
+#   # "dem.diabetes_type_2_late_onset_numeric",
+#   # "dem.pcos_numeric"
+# )
+
+cache("illnesses")
+
+lab_illnesses <- c(
+  # "Metal implants",
+  "Epilepsy or convulsions",
+  "Migraines", "Multiple sclerosis",
+  # Rank deficient
+  "Parkinsons disease",
+  "Severe memory loss",
+  # "Neurological none", "Neurological dont know",
+  # "Neurological prefer not to answer",
+  "Hay fever",
+  "Drug allergy", "Food allergy",
+  "Other allergy", "Osteoporosis",
+  "Osteoarthritis", "Rheumatoid arthritis",
+  "Other arthritis",
+  # "Allergy none",
+  "Asthma", "Emphysema or chronic bronchitis",
+  "Heart attack or angina", "High blood cholesterol",
+  "High blood pressure", "Atrial fibrillation",
+  "Stroke",
+  "Crohns disease", "Ulcerative colitis",
+  "Coeliac disease", "Diabetes type 1",
+  "Diabetes type 2",
+  # "Pain due to diabetes",
+  "Pain due to virus",
+  "Breast cancer",
+  # Rank deficient
+  "Lung cancer",
+  "Stomach cancer",
+  "Colon cancer",
+  "Uterus cancer", "Prostate cancer",
+  "Psoriasis",
+  "Vitiligo", "Eczema",
+  "Thyroid disease"
+  # "Listed previously told illness"
+  # All NA
+  # "Brain tumour",
+  # "Ankylosing spondylitis", "Hypermobility",
+  # "Pots", "Diabetes type 1 early onset",
+  # "Diabetes type 1 late onset",
+  # "Diabetes type 2 late onset",
+  # "Pcos"
+)
+
+disability_illness_bin <- disability_illness_glad_clean[
+  c("ID", "sample", "startDate", "endDate", "dem.disability_numeric")
+] %>%
+  na_convert() %>%
+  na_row_remove() %>%
+  id_select(disable_bin = dem.disability_numeric)
+
+disabilities_illnesses <- disability_illness_glad_clean[
+  c("ID", "sample", "startDate", "endDate", illnesses)
+] %>%
+  na_convert() %>%
+  na_row_remove() %>%
+  id_select(illnesses)
+
+
+# 1. Define the Group Vectors
+# (Based on the filtered list from the previous step)
+
+group_cardiometabolic <- c(
+  "dem.heart_attack_or_angina_numeric",
+  "dem.high_blood_cholesterol_numeric",
+  "dem.high_blood_pressure_numeric",
+  "dem.atrial_fibrillation_numeric",
+  "dem.stroke_numeric",
+  "dem.diabetes_type_2_numeric",
+  "dem.thyroid_disease_numeric"
+)
+
+group_neurological <- c(
+  "dem.parkinsons_disease_numeric",
+  "dem.epilepsy_or_convulsions_numeric",
+  "dem.migraines_numeric",
+  "dem.multiple_sclerosis_numeric",
+  "dem.severe_memory_loss_numeric"
+)
+
+group_autoimmune <- c(
+  "dem.rheumatoid_arthritis_numeric",
+  "dem.crohns_disease_numeric",
+  "dem.ulcerative_colitis_numeric",
+  "dem.coeliac_disease_numeric",
+  "dem.diabetes_type_1_numeric",
+  "dem.psoriasis_numeric",
+  "dem.vitiligo_numeric",
+  "dem.eczema_numeric"
+)
+
+group_respiratory_atopic <- c(
+  "dem.hay_fever_numeric",
+  "dem.drug_allergy_numeric",
+  "dem.food_allergy_numeric",
+  "dem.other_allergy_numeric",
+  "dem.asthma_numeric",
+  "dem.emphysema_or_chronic_bronchitis_numeric" # Kept exact name from your list
+)
+
+group_oncology <- c(
+  "dem.breast_cancer_numeric",
+  "dem.colon_cancer_numeric",
+  "dem.uterus_cancer_numeric",
+  "dem.lung_cancer_numeric",
+  "dem.stomach_cancer_numeric",
+  "dem.prostate_cancer_numeric"
+)
+
+group_musculoskeletal_pain <- c(
+  "dem.osteoporosis_numeric",
+  "dem.osteoarthritis_numeric",
+  "dem.other_arthritis_numeric",
+  "dem.pain_due_to_virus_numeric"
+)
+
+# 2. Create the dataframe with Sum Scores
+
+grouped_illnesses <- disability_illness_glad_clean[
+  c("ID", "sample", "startDate", "endDate", illnesses)
+] %>%
+  na_convert() %>%
+  na_row_remove() %>%
+  id_select(illnesses) %>%
+  mutate(
+    # Calculate row-wise sums for each group
+    score_cardiometabolic = rowSums(across(all_of(group_cardiometabolic)), na.rm = TRUE),
+    score_neurological    = rowSums(across(all_of(group_neurological)), na.rm = TRUE),
+    score_autoimmune      = rowSums(across(all_of(group_autoimmune)), na.rm = TRUE),
+    score_respiratory     = rowSums(across(all_of(group_respiratory_atopic)), na.rm = TRUE),
+    score_oncology        = rowSums(across(all_of(group_oncology)), na.rm = TRUE),
+    score_musculoskeletal = rowSums(across(all_of(group_musculoskeletal_pain)), na.rm = TRUE)
+  ) %>%
+  id_select(starts_with("score_"))
+
+cache("grouped_illnesses")
+
+lab_grouped_illnesses <- c(
+  score_cardiometabolic = "Cardiometabolic & endocrine Disorders",
+  score_neurological    = "Neurological conditions",
+  score_autoimmune      = "Autoimmune & inflammatory Diseases",
+  score_respiratory     = "Respiratory & atopic conditions",
+  score_oncology        = "Oncological disorders",
+  score_musculoskeletal = "Musculoskeletal & pain disorders"
+)
+
+cache("lab_grouped_illnesses")
+
 # remission[remission$remission > 1,"n_meds"]
 # remission[which(remission$remission > 1)[1],] %>%
 #     unlist()
@@ -375,11 +616,12 @@ remission <- antidepressants_imprv_glad_med_id %>%
   rowwise() %>%
   mutate(
     remission_count =
-      sum(c_across(
-        antidepressants_imprv.condition_period_time_experience.citalopram:
-        antidepressants_imprv.condition_period_time_experience.vortioxetine
-      ),
-      na.rm = T
+      sum(
+        c_across(
+          antidepressants_imprv.condition_period_time_experience.citalopram:
+          antidepressants_imprv.condition_period_time_experience.vortioxetine
+        ),
+        na.rm = T
       )
   ) %>%
   ungroup() %>%
@@ -415,6 +657,9 @@ dat_list <- list(
   signup_bmi_height_weight_med,
   marital_status_med,
   mhd_med,
+  disability_illness_bin,
+  disabilities_illnesses,
+  grouped_illnesses,
   audit_med,
   cidid_recurrence_med,
   # cidia_recurrence_med,
@@ -434,7 +679,7 @@ dat_list <- list(
   time
 )
 
-dat <- reduce(dat_list, left_join) %>%
+dat <- reduce(dat_list, left_join, by = "ID") %>%
   filter(
     Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder ==
       "No"
@@ -443,8 +688,9 @@ dat <- reduce(dat_list, left_join) %>%
   # Remove unused levels
   mutate_if(is.factor, droplevels)
 
+
 labels <- c(
-  "Number of antidepressantss",
+  "Number of antidepressants",
   "Sex (female)",
   "Average starting age/10",
   # "Years of education",
@@ -452,7 +698,7 @@ labels <- c(
   "Full or part-time student v.s In paid employment or self-employed",
   "Looking after home and/or family v.s In paid employment or self-employed",
   "None of the above v.s In paid employment or self-employed",
-  "Retired v.s In paid employment or self-employed",
+  "Retired v.s In paid employment",
   "Unable to work because of sickness or disability v.s In paid employment or self-employed",
   "Unemployed v.s. In paid employment or self-employed",
   "BMI (kg/m^2)",
@@ -469,6 +715,9 @@ labels <- c(
   "Only bipolar disorder v.s No psychotic or bipolar disorder",
   "Only psychotic disorder v.s No psychotic or bipolar disorder",
   "Psychotic and bipolar disorder v.s No psychotic or bipolar disorder",
+  "Disability or illness",
+  lab_illnesses,
+  lab_grouped_illnesses,
   "Alcohol use disorder",
   "Number of depressive disorder episodes",
   "Current anxiety",
@@ -484,7 +733,7 @@ labels <- c(
   "Average effectiveness",
   "First improvement duration",
   "Occurence of remission",
-  "Total duration on antidepressantss"
+  "Total duration on antidepressants"
 ) %>% setNames(colnames(dat)[-1])
 
 cache("labels")
