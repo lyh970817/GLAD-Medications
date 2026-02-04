@@ -7,7 +7,6 @@ library(grid)
 # install.packages("ggplot2")
 reload.project()
 
-sef_models
 plot_sef <- plot_models_publication(
   multi_adjust(sef_models)
 )
@@ -110,7 +109,9 @@ save_grouped_plots <- function(models, prefix) {
     # 1. Get target labels
     # We need to intersect with available labels to avoid errors if some are missing
     valid_vars <- intersect(var_names, names(labels))
-    if (length(valid_vars) == 0) return(NULL)
+    if (length(valid_vars) == 0) {
+      return(NULL)
+    }
 
     target_params <- labels[valid_vars]
     clean_targets <- str_remove(target_params, "v\\.s.*$")
@@ -118,7 +119,9 @@ save_grouped_plots <- function(models, prefix) {
     # 2. Filter models
     filtered_models <- map(models_adj, function(outcome_models) {
       map(outcome_models, function(df) {
-        if (!is.data.frame(df)) return(df)
+        if (!is.data.frame(df)) {
+          return(df)
+        }
         df %>%
           mutate(clean_param = str_remove(Parameter, "v\\.s.*$")) %>%
           filter(clean_param %in% clean_targets) %>%
@@ -146,9 +149,9 @@ save_grouped_plots <- function(models, prefix) {
       walk(outcome_models, function(m) {
         if (is.data.frame(m)) {
           if ("Coefficient_logistic" %in% names(m)) {
-             n_rows <<- n_rows + nrow(m) * 2
+            n_rows <<- n_rows + nrow(m) * 2
           } else {
-             n_rows <<- n_rows + nrow(m)
+            n_rows <<- n_rows + nrow(m)
           }
         }
       })
@@ -160,12 +163,15 @@ save_grouped_plots <- function(models, prefix) {
 
     # 5. Save
     fname <- sprintf("./graphs/%s_%s.png", prefix, group_name)
-    tryCatch({
-      # Width reduced from 15 to 12
-      ggsave(filename = fname, plot = p, height = plot_height, width = 12, limitsize = FALSE)
-    }, error = function(e) {
-      warning(paste("Failed to save", fname, ":", e$message))
-    })
+    tryCatch(
+      {
+        # Width reduced from 15 to 12
+        ggsave(filename = fname, plot = p, height = plot_height, width = 12, limitsize = FALSE)
+      },
+      error = function(e) {
+        warning(paste("Failed to save", fname, ":", e$message))
+      }
+    )
   })
 }
 
