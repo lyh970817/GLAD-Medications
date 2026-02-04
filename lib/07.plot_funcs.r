@@ -63,7 +63,7 @@ plot_models_publication <- function(models) {
     geom_errorbar(
       aes(xmin = CI_low, xmax = CI_high, color = Significance),
       width = 0.2,
-      linewidth = 0.6,
+      size = 0.6,
       position = position_dodge(width = dodge_width)
     ) +
     geom_point(
@@ -81,13 +81,13 @@ plot_models_publication <- function(models) {
     labs(x = "Estimate (95% CI)", y = NULL) +
     theme_minimal(base_size = 16, base_family = "sans") +
     theme(
-      axis.line.x = element_line(color = "black", linewidth = 0.5),
+      axis.line.x = element_line(color = "black", size = 0.5),
       axis.text.y = element_text(color = "black", face = "bold", margin = margin(r = 10)),
       axis.text.x = element_text(color = "black"),
       axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
       panel.grid.minor = element_blank(),
       panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
-      panel.grid.major.y = element_line(color = "grey85", linewidth = 0.5),
+      panel.grid.major.y = element_line(color = "grey85", size = 0.5),
       legend.position = "bottom",
       legend.justification = "center",
       legend.margin = margin(t = 10),

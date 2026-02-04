@@ -7,48 +7,6 @@ library(grid)
 # install.packages("ggplot2")
 reload.project()
 
-tm_sef <- forest_theme(
-  base_size = 13,
-  refline_lty = "dashed",
-  ci_pch = c(15, 18, 18, 18),
-  ci_col = c("#377eb8", "#377eb8", "#762a83", "#34eb7a"),
-  footnote_col = "blue",
-  legend_name = "Outcome",
-  legend_position = "bottom",
-  legend_value = paste(
-    c(names(sef_models)[1], names(sef_models)),
-    c("(= 0 v.s. > 0)", "(> 0)", "", "")
-  ),
-  ref_line = 1
-)
-
-tm_eff <- forest_theme(
-  base_size = 13,
-  refline_lty = "dashed",
-  ci_pch = c(18, 18, 18, 18, 18),
-  ci_col = c("#377eb8", "#762a83", "#eb5334", "#34eb71", "#eb346b"),
-  footnote_col = "blue",
-  legend_name = "Outcome",
-  legend_position = "bottom",
-  legend_value = names(eff_models),
-  ref_line = 1,
-)
-
-my_custom_theme <- theme_classic() +
-  theme(
-    text = element_text(family = "sans", color = "black"),
-    # Make axis text large and readable
-    axis.text.x = element_text(size = 12),
-    axis.text.y = element_text(size = 12, face = "bold"),
-    # Remove the Y-axis line (common in forest plots)
-    axis.line.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    # Ensure legend text is readable
-    legend.text = element_text(size = 11),
-    # Add a box around the legend keys
-    legend.background = element_rect(fill = "white", color = NA)
-  )
-
 sef_models
 plot_sef <- plot_models_publication(
   multi_adjust(sef_models)
