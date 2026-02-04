@@ -56,7 +56,7 @@ plot_models_publication <- function(models) {
 
   # --- 4. PLOTTING ---
   ggplot(plot_data, aes(x = Estimate, y = Parameter, group = Outcome)) +
-    geom_vline(xintercept = 1, linetype = "solid", color = "black", linewidth = 0.4) +
+    geom_vline(xintercept = 1, linetype = "solid", color = "black", size = 0.4) +
 
     # FIXED: Use geom_errorbar instead of geom_errorbarh
     # Note: 'width' here controls the height of the caps on the Y-axis
