@@ -4,7 +4,7 @@
     "Repositories": [
       {
         "Name": "CRAN",
-        "URL": "https://mirrors.tuna.tsinghua.edu.cn/CRAN"
+        "URL": "https://www.stats.bris.ac.uk/R"
       }
     ]
   },
@@ -997,11 +997,8 @@
     },
     "renv": {
       "Package": "renv",
-      "Version": "0.16.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "c9e8442ab69bc21c9697ecf856c1e6c7",
-      "Requirements": []
+      "Version": "1.1.5",
+      "Source": "Repository"
     },
     "reprex": {
       "Package": "reprex",
