@@ -3,3 +3,15 @@ data/*
 results/*
 cache/*
 report/*
+reports/
+gwas/
+
+# Local Environment
+.R/
+.bin/
+.direnv/
+
+# Renv artifacts
+renv/renv/
+renv/x86_64-pc-linux-gnu/
+
