@@ -180,3 +180,86 @@ save_grouped_plots(sef_models, "sef")
 save_grouped_plots(eff_models, "eff")
 save_grouped_plots(sef_models_compete, "sef_compete")
 save_grouped_plots(eff_models_compete, "eff_compete")
+
+# ==============================================================================
+# GLMM PLOTS
+# ==============================================================================
+
+# GLMM Results are stored in:
+# glmm_models (Unadjusted)
+# glmm_models_cov (Adjusted)
+
+# 1. Main Plots (Forest plots for all predictors)
+# ------------------------------------------------------------------------------
+plot_glmm <- plot_models_publication(
+  multi_adjust(glmm_models)
+)
+
+plot_glmm_cov <- plot_models_publication(
+  multi_adjust(glmm_models_cov)
+)
+
+ggsave(
+  filename = "./graphs/glmm_all.png", plot = plot_glmm,
+  height = 40, width = 15, limitsize = FALSE
+)
+
+ggsave(
+  filename = "./graphs/glmm_all_cov.png", plot = plot_glmm_cov,
+  height = 40, width = 15, limitsize = FALSE
+)
+
+# 2. Grouped Plots
+# ------------------------------------------------------------------------------
+# Split by outcome type for better visualization
+# glmm_deps: "effectiveness", "n_se", "remission", "stopped_due_to_se"
+
+# Define subsets of models based on outcome
+# glmm_models is a list named by dependent variable
+# We can subset the list.
+
+glmm_eff_deps <- c("effectiveness", "remission")
+glmm_sef_deps <- c("n_se", "stopped_due_to_se")
+
+glmm_models_eff <- glmm_models[labels[glmm_eff_deps]]
+glmm_models_sef <- glmm_models[labels[glmm_sef_deps]]
+
+glmm_models_cov_eff <- glmm_models_cov[labels[glmm_eff_deps]]
+glmm_models_cov_sef <- glmm_models_cov[labels[glmm_sef_deps]]
+
+# Save grouped plots
+save_grouped_plots(glmm_models_eff, "glmm_eff")
+save_grouped_plots(glmm_models_sef, "glmm_sef")
+save_grouped_plots(glmm_models_cov_eff, "glmm_eff_cov")
+save_grouped_plots(glmm_models_cov_sef, "glmm_sef_cov")
+
+# 3. Combined plots for outcome groups (Requested in plan)
+# ------------------------------------------------------------------------------
+
+# Unadjusted Effectiveness
+plot_glmm_eff <- plot_models_publication(multi_adjust(glmm_models_eff))
+ggsave(
+  filename = "./graphs/glmm_eff.png", plot = plot_glmm_eff,
+  height = 30, width = 15, limitsize = FALSE
+)
+
+# Unadjusted Side Effects
+plot_glmm_sef <- plot_models_publication(multi_adjust(glmm_models_sef))
+ggsave(
+  filename = "./graphs/glmm_sef.png", plot = plot_glmm_sef,
+  height = 30, width = 15, limitsize = FALSE
+)
+
+# Adjusted Effectiveness (Compete)
+plot_glmm_eff_cov <- plot_models_publication(multi_adjust(glmm_models_cov_eff))
+ggsave(
+  filename = "./graphs/glmm_eff_compete.png", plot = plot_glmm_eff_cov,
+  height = 30, width = 15, limitsize = FALSE
+)
+
+# Adjusted Side Effects (Compete)
+plot_glmm_sef_cov <- plot_models_publication(multi_adjust(glmm_models_cov_sef))
+ggsave(
+  filename = "./graphs/glmm_sef_compete.png", plot = plot_glmm_sef_cov,
+  height = 30, width = 15, limitsize = FALSE
+)

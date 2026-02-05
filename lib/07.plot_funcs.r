@@ -5,6 +5,8 @@ plot_models_publication <- function(models) {
       return(NULL)
     }
 
+    if (nrow(df) == 0) return(NULL)
+
     df <- df %>% mutate(Parameter = str_remove(Parameter, "v\\.s.*$"))
 
     if ("Coefficient_logistic" %in% names(df)) {
@@ -24,6 +26,12 @@ plot_models_publication <- function(models) {
 
       bind_rows(part1, part2)
     } else {
+      # Check if 'p' exists
+      if (!"p" %in% names(df)) {
+          warning(paste("Model for", outcome_label, "missing 'p' column. Columns:", paste(names(df), collapse=", ")))
+          return(NULL)
+      }
+
       df %>%
         select(Parameter,
           Estimate = Coefficient,
@@ -39,6 +47,11 @@ plot_models_publication <- function(models) {
       extract_model_data(item, outcome_name)
     })
   })
+
+  if (nrow(plot_data) == 0) {
+      warning("No data to plot")
+      return(NULL)
+  }
 
   # --- 2. PREPARATION ---
   plot_data <- plot_data %>%
@@ -56,14 +69,14 @@ plot_models_publication <- function(models) {
 
   # --- 4. PLOTTING ---
   ggplot(plot_data, aes(x = Estimate, y = Parameter, group = Outcome)) +
-    geom_vline(xintercept = 1, linetype = "solid", color = "black", size = 0.4) +
+    geom_vline(xintercept = 1, linetype = "solid", color = "black", linewidth = 0.4) +
 
     # FIXED: Use geom_errorbar instead of geom_errorbarh
     # Note: 'width' here controls the height of the caps on the Y-axis
     geom_errorbar(
       aes(xmin = CI_low, xmax = CI_high, color = Significance),
       width = 0.2,
-      size = 0.6,
+      linewidth = 0.6,
       position = position_dodge(width = dodge_width)
     ) +
     geom_point(
@@ -81,13 +94,13 @@ plot_models_publication <- function(models) {
     labs(x = "Estimate (95% CI)", y = NULL) +
     theme_minimal(base_size = 16, base_family = "sans") +
     theme(
-      axis.line.x = element_line(color = "black", size = 0.5),
+      axis.line.x = element_line(color = "black", linewidth = 0.5),
       axis.text.y = element_text(color = "black", face = "bold", margin = margin(r = 10)),
       axis.text.x = element_text(color = "black"),
       axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
       panel.grid.minor = element_blank(),
       panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
-      panel.grid.major.y = element_line(color = "grey85", size = 0.5),
+      panel.grid.major.y = element_line(color = "grey85", linewidth = 0.5),
       legend.position = "bottom",
       legend.justification = "center",
       legend.margin = margin(t = 10),

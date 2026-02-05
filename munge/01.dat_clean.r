@@ -6,7 +6,7 @@ sex_med <- sex_gender_sexuality_glad_clean %>%
 
 # Age
 age_med <- age_glad_clean %>%
-  mutate(age = dem.dob_age / 10) %>%
+  dplyr::mutate(age = dem.dob_age / 10) %>%
   na_convert() %>%
   na_row_remove() %>%
   id_select(age)
@@ -195,15 +195,15 @@ wsas_med <- wsas_glad_clean %>%
 n_relatives <- fh_mhd_f_glad_dat %>%
   full_join(fh_mhd2_f_glad_dat, by = c("externalDataReference", "startDate", "endDate")) %>%
   select(ID = externalDataReference, everything()) %>%
-  mutate(sample = "glad") %>%
-  mutate(across(starts_with("fh_"), str_extract, "\\d*")) %>%
-  mutate(across(starts_with("fh_"), as.numeric)) %>%
+  dplyr::mutate(sample = "glad") %>%
+  dplyr::mutate(across(starts_with("fh_"), str_extract, "\\d*")) %>%
+  dplyr::mutate(across(starts_with("fh_"), as.numeric)) %>%
   # All to positive
-  mutate(across(starts_with("fh_"), abs)) %>%
+  dplyr::mutate(across(starts_with("fh_"), abs)) %>%
   na_convert() %>%
   na_row_remove() %>%
   rowwise() %>%
-  mutate(n_relatives = sum(c_across(starts_with("fh_")), na.rm = T)) %>%
+  dplyr::mutate(n_relatives = sum(c_across(starts_with("fh_")), na.rm = T)) %>%
   id_select(n_relatives)
 
 # Smoking
@@ -218,7 +218,7 @@ n_best <-
   na_convert() %>%
   na_row_remove() %>%
   rowwise() %>%
-  mutate(
+  dplyr::mutate(
     n_best =
       sum(c_across(
         antidepressants_ben.relief_of_depressive_symptoms:
@@ -227,20 +227,20 @@ n_best <-
   ) %>%
   ungroup() %>%
   id_select(n_best) %>%
-  mutate(n_best = factor(n_best, ordered = TRUE))
+  dplyr::mutate(n_best = factor(n_best, ordered = TRUE))
 
 # Overall benefit rating
 ben_rating <- antidepressants_ben_glad_med_id %>%
   na_convert() %>%
   na_row_remove() %>%
   id_select(ben_rating = antidepressants_ben.benefits_rate_taking_antidepressantss) %>%
-  mutate(ben_rating = factor(ben_rating, ordered = TRUE))
+  dplyr::mutate(ben_rating = factor(ben_rating, ordered = TRUE))
 
 # Overall side effect rating
 se_rating <- sideeffect_rating %>%
   na_convert() %>%
   id_select(se_rating = sideeffects.rate_sideeffects_taking_antidepressants) %>%
-  mutate(se_rating = factor(se_rating, ordered = TRUE))
+  dplyr::mutate(se_rating = factor(se_rating, ordered = TRUE))
 
 # Number of medications
 prescription_antidepressants_id$prescription.a_different_antidepressants <- NULL
@@ -249,7 +249,7 @@ n_meds <- prescription_antidepressants_id %>%
   na_convert() %>%
   # na_row_remove() %>%
   rowwise() %>%
-  mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine), na.rm = TRUE)) %>%
+  dplyr::mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine), na.rm = TRUE)) %>%
   id_select(n_meds) %>%
   ungroup()
 
@@ -262,7 +262,7 @@ mean_n_se <- sideeffects_antidepressants_id %>%
   na_convert() %>%
   na_row_remove() %>%
   rowwise() %>%
-  mutate(
+  dplyr::mutate(
     n_se =
       sum(c_across(
         sideeffects.dry_mouth.citalopram:sideeffects.other.vortioxetine
@@ -270,7 +270,7 @@ mean_n_se <- sideeffects_antidepressants_id %>%
   ) %>%
   id_select(n_se) %>%
   left_join(n_meds, by = "ID") %>%
-  mutate(mean_n_se = n_se / n_meds) %>%
+  dplyr::mutate(mean_n_se = n_se / n_meds) %>%
   id_select(mean_n_se) %>%
   ungroup()
 
@@ -280,7 +280,7 @@ intolerance <- sideeffects_antidepressants_id %>%
   na_convert() %>%
   na_row_remove() %>%
   rowwise() %>%
-  mutate(
+  dplyr::mutate(
     intolerance_count =
       sum(c_across(
         sideeffects.side_effects_stop_taking.citalopram:
@@ -289,7 +289,7 @@ intolerance <- sideeffects_antidepressants_id %>%
   ) %>%
   ungroup() %>%
   left_join(n_meds, by = "ID") %>%
-  mutate(intolerance = intolerance_count / n_meds) %>%
+  dplyr::mutate(intolerance = intolerance_count / n_meds) %>%
   id_select(intolerance)
 
 # Mean efficacy
@@ -299,14 +299,14 @@ mean_eff <- antidepressants_eff_glad_med_id %>%
   na_convert() %>%
   na_row_remove() %>%
   rowwise() %>%
-  mutate(
+  dplyr::mutate(
     total_eff =
       sum(c_across(antidepressants_eff.antidepressants_work_doesdid.citalopram:
       antidepressants_eff.antidepressants_work_doesdid.vortioxetine), na.rm = T)
   ) %>%
   ungroup() %>%
   left_join(n_meds, by = "ID") %>%
-  mutate(mean_eff = total_eff / n_meds) %>%
+  dplyr::mutate(mean_eff = total_eff / n_meds) %>%
   id_select(mean_eff)
 
 antidepressants_why_glad_med_id <- antidepressants_why_glad_med_id %>%
@@ -328,7 +328,7 @@ started_age <- antidepressants_why_glad_med_id %>%
 avg_start_age <- started_age[-1] %>%
   rowMeans(na.rm = T) %>%
   bind_cols(started_age["ID"], avg_start_age = .) %>%
-  mutate(avg_start_age = avg_start_age / 10)
+  dplyr::mutate(avg_start_age = avg_start_age / 10)
 
 # First improvement duration and occurrence of remission
 antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
@@ -358,7 +358,7 @@ first_imprv <- map2_dbl(
   }
 ) %>%
   tibble(antidepressants_imprv_glad_med_id["ID"], first_imprv = .) %>%
-  mutate(first_imprv = factor(first_imprv, ordered = TRUE))
+  dplyr::mutate(first_imprv = factor(first_imprv, ordered = TRUE))
 
 # Disabilities and illnesses
 disability_illness_bin <- disability_illness_glad_clean[
@@ -578,7 +578,7 @@ grouped_illnesses <- disability_illness_glad_clean[
   na_convert() %>%
   na_row_remove() %>%
   id_select(illnesses) %>%
-  mutate(
+  dplyr::mutate(
     # Calculate row-wise sums for each group
     score_cardiometabolic = rowSums(across(all_of(group_cardiometabolic)), na.rm = TRUE),
     score_neurological    = rowSums(across(all_of(group_neurological)), na.rm = TRUE),
@@ -602,57 +602,113 @@ lab_grouped_illnesses <- c(
 
 cache("lab_grouped_illnesses")
 
-# remission[remission$remission > 1,"n_meds"]
-# remission[which(remission$remission > 1)[1],] %>%
-#     unlist()
-# remission[remission$remission > 1,"remission_count"]
-# prescription_antidepressants_id[prescription_antidepressants_id$ID == "8f552fcb8136789a50be71328410",] %>%
-#     unlist()
-# No St john's wort?
+# ==============================================================================
+# LONGITUDINAL DATA MUNGING
+# ==============================================================================
 
-# Likelihood of remission
-remission <- antidepressants_imprv_glad_med_id %>%
-  id_select(contains("condition_period_time_experience")) %>%
+# Helper to pivot med columns to long format
+pivot_meds <- function(df, prefix, value_name) {
+  df %>%
+    select(-contains("a_different_antidepressants")) %>%
+    na_convert() %>%
+    pivot_longer(
+      cols = starts_with(prefix),
+      names_to = "medication",
+      values_to = value_name
+    ) %>%
+    dplyr::mutate(
+      medication = str_remove(medication, paste0(prefix, "\\."))
+    )
+}
+
+# 1. Start Age & Cumulative Count (Ordering)
+# ------------------------------------------------------------------------------
+# We use start age to determine the order of medications
+start_age_long <- antidepressants_why_glad_med_id %>%
+  pivot_meds("antidepressants_why.started_taking", "start_age") %>%
+  mutate(medication = str_remove(medication, "^txt\\.")) %>%
+  # Filter invalid ages
+  dplyr::mutate(start_age = ifelse(start_age < 5 | start_age > 100, NA, start_age)) %>%
+  filter(!is.na(start_age)) %>%
+  group_by(ID) %>%
+  arrange(start_age) %>%
+  dplyr::mutate(cumulative_med_count = row_number()) %>%
+  ungroup() %>%
+  select(ID, medication, start_age, cumulative_med_count)
+
+# 2. Efficacy
+# ------------------------------------------------------------------------------
+eff_long <- antidepressants_eff_glad_med_id %>%
+  pivot_meds("antidepressants_eff.antidepressants_work_doesdid", "effectiveness")
+
+# 3. Side Effects (Count and Specifics)
+# ------------------------------------------------------------------------------
+# Calculate n_se (count of side effects) per med
+se_long_raw <- sideeffects_antidepressants_id %>%
+  select(-contains("side_effects_stop_taking")) %>%
+  na_convert() %>%
+  pivot_longer(
+    cols = contains("sideeffects."),
+    names_to = c("variable", "medication"),
+    names_pattern = "sideeffects\\.(.*)\\.(.*)",
+    values_to = "value"
+  )
+
+se_long <- se_long_raw %>%
+  # Pivot wider to get columns for each side effect type
+  pivot_wider(
+    names_from = variable,
+    values_from = value
+  ) %>%
   rowwise() %>%
-  mutate(
-    remission_count =
-      sum(
-        c_across(
-          antidepressants_imprv.condition_period_time_experience.citalopram:
-          antidepressants_imprv.condition_period_time_experience.vortioxetine
-        ),
-        na.rm = T
-      )
+  dplyr::mutate(
+      n_se = sum(c_across(dry_mouth:other), na.rm = TRUE)
   ) %>%
   ungroup() %>%
-  left_join(n_meds, by = "ID") %>%
-  mutate(remission = remission_count / n_meds) %>%
-  id_select(remission)
+  select(ID, medication, n_se)
 
+# 4. Remission / Improvement Duration
+# ------------------------------------------------------------------------------
+remission_long <- antidepressants_imprv_glad_med_id %>%
+  pivot_meds("antidepressants_imprv.condition_period_time_experience", "remission")
 
-# Time on antidepressants
+# 5. Benefits (Count and Rating) - STATIC (Not longitudinal per med)
+# ------------------------------------------------------------------------------
+# These appear to be overall ratings, not per-medication.
+ben_static <- antidepressants_ben_glad_med_id %>%
+  na_convert() %>%
+  id_select(ben_rating = antidepressants_ben.benefits_rate_taking_antidepressantss) %>%
+  dplyr::mutate(ben_rating = factor(ben_rating, ordered = TRUE))
 
-# No question in str here???
-# str(antidepressants_why_glad_med_id[648])
-
-time <- antidepressants_why_glad_med_id %>%
-  # no space in easy name
-  id_select(contains("long_taking_takehave")) %>%
+n_best_static <- antidepressants_ben_glad_med_id %>%
+  na_convert() %>%
   rowwise() %>%
-  mutate(
-    time =
-      sum(c_across(
-        antidepressants_why.long_taking_takehave.citalopram:
-        antidepressants_why.long_taking_takehave.vortioxetine
-      ), na.rm = T)
+  dplyr::mutate(
+    n_best = sum(c_across(starts_with("antidepressants_ben.") & !ends_with("txt") & !contains("benefits_rate")), na.rm = TRUE)
   ) %>%
-  id_select(time)
+  ungroup() %>%
+  id_select(n_best)
 
-dat_list <- list(
-  n_meds,
+# 6. Intolerance (Stopped due to SE)
+# ------------------------------------------------------------------------------
+intolerance_long <- sideeffects_antidepressants_id %>%
+  select(ID, contains("side_effects_stop_taking")) %>%
+  pivot_meds("sideeffects.side_effects_stop_taking", "stopped_due_to_se")
+
+# 7. Join Everything (Longitudinal Part)
+# ------------------------------------------------------------------------------
+med_data_long <- start_age_long %>%
+  full_join(eff_long, by = c("ID", "medication")) %>%
+  full_join(se_long, by = c("ID", "medication")) %>%
+  full_join(remission_long, by = c("ID", "medication")) %>%
+  # full_join(ben_long, by = c("ID", "medication")) %>% # Removed as it is static
+  # full_join(n_best_long, by = c("ID", "medication")) %>% # Removed as it is static
+  full_join(intolerance_long, by = c("ID", "medication"))
+
+# 8. Join with Static Demographics
+# ------------------------------------------------------------------------------
+static_dat_list <- list(
   sex_med,
-  avg_start_age,
-  # years_of_education_med,
   employment_med,
   signup_bmi_height_weight_med,
   marital_status_med,
@@ -662,38 +718,51 @@ dat_list <- list(
   grouped_illnesses,
   audit_med,
   cidid_recurrence_med,
-  # cidia_recurrence_med,
   gad7_med,
   phq9_med,
   wsas_med,
   n_relatives,
   smoking_pack_year,
-  n_best,
-  ben_rating,
-  se_rating,
-  mean_n_se,
-  intolerance,
-  mean_eff,
-  first_imprv,
-  remission,
-  time
+  ben_static,  # Added
+  n_best_static, # Added
+  avg_start_age # Added
 )
 
-dat <- reduce(dat_list, left_join, by = "ID") %>%
+static_dat <- reduce(static_dat_list, left_join, by = "ID")
+
+# Final Join
+dat_long <- med_data_long %>%
+  left_join(static_dat, by = "ID") %>%
   filter(
-    Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder ==
-      "No"
+     Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder == "No"
   ) %>%
   select(-Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder) %>%
-  # Remove unused levels
   mutate_if(is.factor, droplevels)
 
+# Format outcomes
+dat_long <- dat_long %>%
+  dplyr::mutate(
+    effectiveness = factor(effectiveness, ordered = TRUE),
+    remission = factor(remission, ordered = TRUE),
+    ben_rating = factor(ben_rating, ordered = TRUE),
+    # Simplify remission if needed (original code cut it)
+    # Keeping raw for now, can transform in model step if needed
+  )
 
+cache("dat_long")
+
+# Labels
+# ------------------------------------------------------------------------------
+# Define labels for plotting/tables
 labels <- c(
-  "Number of antidepressants",
+  "Medication Name",
+  "Start Age",
+  "Cumulative Medication Count",
+  "Effectiveness",
+  "Number of Side Effects",
+  "Remission",
+  "Stopped due to Side Effects",
   "Sex (female)",
-  "Average starting age/10",
-  # "Years of education",
   "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
   "Full or part-time student v.s In paid employment or self-employed",
   "Looking after home and/or family v.s In paid employment or self-employed",
@@ -725,28 +794,58 @@ labels <- c(
   "Work and social impairment",
   "Number of relatives with psychiatric disorders",
   "Pack years of cigarettes smoked",
-  "Number of best aspects",
   "Benefit rating",
-  "Side effect severity rating",
-  "Mean number of side effects",
-  "Treatment discontinuation",
-  "Average effectiveness",
-  "First improvement duration",
-  "Occurence of remission",
-  "Total duration on antidepressants"
-) %>% setNames(colnames(dat)[-1])
+  "Number of best aspects",
+  "Average starting age/10"
+)
 
+# Map labels to column names
+# We do this manually or by name matching.
+# Let's create a named vector.
+label_names <- c(
+  "medication",
+  "start_age",
+  "cumulative_med_count",
+  "effectiveness",
+  "n_se",
+  "remission",
+  "stopped_due_to_se",
+  "sex",
+  "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
+  "In_paid_employment_or_self_employed_Full_or_part_time_student",
+  "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
+  "In_paid_employment_or_self_employed_None_of_the_above",
+  "In_paid_employment_or_self_employed_Retired",
+  "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
+  "In_paid_employment_or_self_employed_Unemployed",
+  "bmi",
+  "Not_in_relationship_In_relationship",
+  "Not_in_relationship_Married",
+  "eating_disorders_numeric",
+  "mhd_addadhd_numeric",
+  "obsessive_compulsive_disorders_numeric",
+  "mhd_personality_disorder_numeric",
+  "autism_spectrum_disorder_numeric",
+  "comorbidity_total_count_numeric",
+  "Depressive_and_anxiety_disorder_Only_anxiety_disorder",
+  "Depressive_and_anxiety_disorder_Only_depressive_disorder",
+  "No_psychotic_or_bipolar_disorder_Only_bipolar_disorder",
+  "No_psychotic_or_bipolar_disorder_Only_psychotic_disorder",
+  "No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder",
+  "disable_bin",
+  illnesses,
+  names(lab_grouped_illnesses),
+  "audit",
+  "cidid_recurrence",
+  "gad7",
+  "phq9",
+  "wsas",
+  "n_relatives",
+  "pack_year",
+  "ben_rating",
+  "n_best",
+  "avg_start_age"
+)
+
+labels <- setNames(labels, label_names)
 cache("labels")
-
-dat_uncut <- dat
-
-cache("dat_uncut")
-
-dat <- dat %>%
-  mutate(
-    mean_eff = cut(mean_eff, 6, labels = 1:6, ordered_result = T),
-    remission = cut(remission, 3, labels = 1:3, ordered_result = T),
-    intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = T)
-  )
-
-cache("dat")

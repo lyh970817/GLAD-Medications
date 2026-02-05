@@ -1,5 +1,7 @@
 require(ordinal)
 require(parameters)
+require(lme4)
+require(Matrix)
 
 select_model_fields <- function(model, stp = NULL) {
   m_ptrs <- parameters(model) %>%
@@ -13,6 +15,76 @@ select_model_fields <- function(model, stp = NULL) {
   } else {
     m_ptrs
   }
+}
+
+fit_glmm <- function(dep, indeps, data, family = NULL) {
+  # Clean data
+  # Ensure ID is included in selection for the random effect
+  data <- na.omit(data[c("ID", dep, indeps)])
+
+  if (nrow(data) == 0) {
+      warning(paste("Data empty for", dep, "with indeps:", paste(indeps, collapse=", ")))
+      return(NULL)
+  }
+
+  # Construct formula
+  fm_str <- paste(dep, "~", paste(indeps, collapse = "+"), "+ (1 | ID)")
+  fm <- as.formula(fm_str)
+
+  # Detect model type
+  is_ordered <- is.ordered(data[[dep]])
+  is_factor <- is.factor(data[[dep]])
+  n_lev <- if (is_factor) nlevels(data[[dep]]) else 0
+
+  m <- NULL
+
+  tryCatch({
+      if (is_factor && n_lev == 2) {
+         # Binary (whether ordered or not)
+         m <- glmer(fm, data = data, family = binomial)
+      } else if (is_ordered) {
+        # Ordinal Mixed Model
+        # clmm requires ordered factor
+        m <- clmm(fm, data = data, link = "logit")
+      } else if (!is.null(family)) {
+        # GLMM with specified family
+        m <- glmer(fm, data = data, family = family)
+      } else if (is_factor && nlevels(data[[dep]]) == 2) {
+         # Binary factor
+         m <- glmer(fm, data = data, family = binomial)
+      } else {
+         # Check for count data (integers >= 0)
+         is_count <- is.numeric(data[[dep]]) && all(data[[dep]] %% 1 == 0, na.rm = TRUE) && min(data[[dep]], na.rm = TRUE) >= 0
+
+         if (is_count) {
+             # Check if binary numeric (0/1)
+             if (all(data[[dep]] %in% c(0, 1, NA))) {
+                 m <- glmer(fm, data = data, family = binomial)
+             } else {
+                 # Default to Poisson
+                 m <- glmer(fm, data = data, family = poisson)
+             }
+         } else {
+             # Gaussian
+             m <- lmer(fm, data = data)
+         }
+      }
+  }, error = function(e) {
+      warning(paste("Model failed for", dep, ":", e$message))
+      return(NULL)
+  })
+
+  if (is.null(m)) return(NULL)
+
+  # Extract parameters
+  ms <- select_model_fields(m)
+
+  # Store dependent variable
+  attr(ms, "dep") <- dep
+  # Store sample size
+  attr(ms, "n") <- nrow(data)
+
+  return(ms)
 }
 
 fit_hurdle <- function(dep, indeps, data) {

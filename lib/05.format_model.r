@@ -27,7 +27,7 @@ format_model <- function(model) {
     # Intercept for clm
     filter(!grepl("\\d\\|\\d", Parameter)) %>%
     combine_cicoef() %>%
-    mutate(Parameter = recode(Parameter, !!!labels))
+    mutate(Parameter = coalesce(labels[Parameter], Parameter))
 
   # For hurdel models with column `step`
   if ("step" %in% colnames(tab)) {

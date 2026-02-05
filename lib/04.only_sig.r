@@ -2,11 +2,15 @@ only_sig <- function(models, discard_row = TRUE) {
   # Keep only the significant variables
   map(models, function(model_indeps) {
     map(model_indeps, function(model) {
+      if (is.null(model) || nrow(model) == 0) return(model)
+
       p_cols <- grep("^p", colnames(model))
+
+      if (length(p_cols) == 0) return(model)
 
       if (discard_row) {
         sig_rows <- apply(model[p_cols], 1, function(pvals) {
-          any(pvals <= 0.05)
+          any(pvals <= 0.05, na.rm = TRUE)
         }) %>%
           which()
 
