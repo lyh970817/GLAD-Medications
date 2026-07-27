@@ -5,11 +5,13 @@ cache/*
 report/*
 reports/
 gwas/
+logs/
 
 # Local Environment
 .R/
 .bin/
 .direnv/
+.envrc.local
 
 # Renv artifacts
 renv/renv/
@@ -19,5 +21,4 @@ renv/x86_64-pc-linux-gnu/
 docs/S0033291722002501sup001.docx
 docs/sef_prevalence.png
 docs/v2-76a4a58ce176db26cdb8aa103c0b3119_r.jpg
-
 
