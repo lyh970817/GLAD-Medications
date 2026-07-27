@@ -1,11 +1,21 @@
-# setwd(".")
 require(ProjectTemplate)
 require(tidyverse)
 require(rlist)
 library(gtable)
 library(grid)
-# install.packages("ggplot2")
 reload.project()
+
+# The legacy non-longitudinal models use their own names for the side-effect
+# predictors; these labels are defined in src/02.regression.r and are not part
+# of the cached `labels` object.
+labels_extra <- c(
+  mean_n_se = "Mean number of side effects",
+  intolerance = "Treatment discontinuation",
+  mean_eff = "Average effectiveness",
+  first_imprv = "First improvement duration",
+  time = "Total duration on antidepressants"
+)
+labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 
 plot_sef <- plot_models_publication(
   multi_adjust(sef_models)
@@ -66,7 +76,6 @@ predictor_groups_list <- list(
     "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
     "In_paid_employment_or_self_employed_Full_or_part_time_student",
     "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
-    "In_paid_employment_or_self_employed_None_of_the_above",
     "In_paid_employment_or_self_employed_Retired",
     "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
     "In_paid_employment_or_self_employed_Unemployed"
@@ -95,8 +104,12 @@ predictor_groups_list <- list(
     "score_musculoskeletal"
   ),
   "Side_Effects" = c(
-    "mean_n_se",
+    # longitudinal GLMM names
+    "n_se",
     "se_rating",
+    "stopped_due_to_se",
+    # legacy non-longitudinal equivalents
+    "mean_n_se",
     "intolerance"
   )
 )
