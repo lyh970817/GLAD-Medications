@@ -21,38 +21,16 @@ signup_bmi_height_weight_med <- signup_bmi_height_weight_glad_clean %>%
 years_of_education_med <- years_of_education_glad_clean %>%
   na_convert() %>%
   # Missing 'startDate' and 'endDate'
-  # na_row_remove() %>%
   id_select(education_yrs = `dem.years_schoolplease_include_preschool.txt`)
 
 # Employment
-recode_employed <- c(
-  "In paid employment or self-employed",
-  "Retired",
-  "Looking after home and/or family",
-  "Doing unpaid or voluntary work",
-  "Full or part-time student",
-  "None of the above"
-) %>%
-  setNames(rep("Employed", length(.)))
-
-recode_unempolyed <-
-  c(
-    "Unemployed",
-    "Unable to work because of sickness or disability"
-  ) %>%
-  setNames(rep("Unemployed", length(.)))
-
 employment_glad_clean$dem.what_is_your_current_employment_status <-
   employment_glad_clean$dem.what_is_your_current_employment_status %>%
   factor()
-#   fct_recode(!!!recode_employed) %>%
-#   fct_recode(!!!recode_unempolyed) %>%
-#   factor(levels = c("Unemployed", "Employed"))
 
 employment_med <- employment_glad_clean %>%
   na_convert() %>%
   # Missing 'startDate' and 'endDate'
-  # na_row_remove() %>%
   id_select(
     "In_paid_employment_or_self-employed" =
       dem.what_is_your_current_employment_status
@@ -69,9 +47,13 @@ employment_med <- employment_glad_clean %>%
   select(-"In_paid_employment_or_self-employed")
 
 colnames(employment_med) <- gsub(" ", "_", colnames(employment_med))
-# Hypen will be confused with minus sign in R formulae
+# Hyphen will be confused with minus sign in R formulae
 colnames(employment_med) <- gsub("-", "_", colnames(employment_med))
 colnames(employment_med) <- gsub("/", "_", colnames(employment_med))
+
+# Remove "None of the above" employment category from analysis
+employment_med <- employment_med %>%
+  select(-any_of("In_paid_employment_or_self_employed_None_of_the_above"))
 
 # Marital status
 recode_norelationship <-
@@ -170,7 +152,6 @@ cidid_recurrence_med <- cidid_recurrence_glad_clean %>%
 
 # CIDIA recurrence
 # Wrong!!! Too many NAs
-# sum(is.na(cidia_recurrence_med$cidia_recurrence))
 cidia_recurrence_med <- cidia_cleaning_algorithm_glad_clean %>%
   id_select(cidia_recurrence = cidia.number_of_episodes)
 
@@ -189,7 +170,7 @@ phq9_med <- phq9_glad_clean %>%
 wsas_med <- wsas_glad_clean %>%
   id_select(wsas = wsas.sum_score)
 
-# Number of relatives wtih psychiatric disorder
+# Number of relatives with psychiatric disorder
 # Needs updating ilovedata script
 
 n_relatives <- fh_mhd_f_glad_dat %>%
@@ -201,10 +182,12 @@ n_relatives <- fh_mhd_f_glad_dat %>%
   # All to positive
   dplyr::mutate(across(starts_with("fh_"), abs)) %>%
   na_convert() %>%
-  na_row_remove() %>%
   rowwise() %>%
   dplyr::mutate(n_relatives = sum(c_across(starts_with("fh_")), na.rm = T)) %>%
-  id_select(n_relatives)
+  ungroup() %>%
+  id_select(n_relatives) %>%
+  group_by(ID) %>%
+  dplyr::summarise(n_relatives = max(n_relatives, na.rm = TRUE), .groups = "drop")
 
 # Smoking
 smoking_pack_year <- smoking_pack_year_glad %>%
@@ -247,7 +230,6 @@ prescription_antidepressants_id$prescription.a_different_antidepressants <- NULL
 
 n_meds <- prescription_antidepressants_id %>%
   na_convert() %>%
-  # na_row_remove() %>%
   rowwise() %>%
   dplyr::mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine), na.rm = TRUE)) %>%
   id_select(n_meds) %>%
@@ -411,47 +393,6 @@ illnesses <- c(
   # "dem.diabetes_type_2_late_onset_numeric",
   # "dem.pcos_numeric"
 )
-# illnesses <- c(
-#   "dem.metal_implants_numeric", "dem.epilepsy_or_convulsions_numeric",
-#   "dem.migraines_numeric", "dem.multiple_sclerosis_numeric",
-#   # Rank deficient
-#   "dem.parkinsons_disease_numeric",
-#   "dem.severe_memory_loss_numeric",
-#   # "dem.neurological_none_numeric", "dem.neurological_dont_know_numeric",
-#   # "dem.neurological_prefer_not_to_answer_numeric",
-#   "dem.hay_fever_numeric",
-#   "dem.drug_allergy_numeric", "dem.food_allergy_numeric",
-#   "dem.other_allergy_numeric", "dem.osteoporosis_numeric",
-#   "dem.osteoarthritis_numeric", "dem.rheumatoid_arthritis_numeric",
-#   "dem.other_arthritis_numeric",
-#   # "dem.allergy_none_numeric",
-#   "dem.asthma_numeric", "dem.emphysema_or_chronic_bronchitis",
-#   "dem.heart_attack_or_angina_numeric", "dem.high_blood_cholesterol_numeric",
-#   "dem.high_blood_pressure_numeric", "dem.atrial_fibrillation_numeric",
-#   "dem.stroke_numeric",
-#   "dem.crohns_disease_numeric", "dem.ulcerative_colitis_numeric",
-#   "dem.coeliac_disease_numeric", "dem.diabetes_type_1_numeric",
-#   "dem.diabetes_type_2_numeric", "dem.pain_due_to_diabetes_numeric",
-#   "dem.pain_due_to_virus_numeric",
-#   "dem.breast_cancer_numeric",
-#   # Rank deficient
-#   "dem.lung_cancer_numeric",
-#   "dem.stomach_cancer_numeric",
-#   "dem.colon_cancer_numeric",
-#   "dem.uterus_cancer_numeric",
-#   "dem.prostate_cancer_numeric",
-#   "dem.psoriasis_numeric",
-#   "dem.vitiligo_numeric", "dem.eczema_numeric",
-#   "dem.thyroid_disease_numeric"
-#   # "dem.listed_previously_told_illness_numeric"
-#   # All NA
-#   # "dem.brain_tumour_numeric",
-#   # "dem.ankylosing_spondylitis_numeric", "dem.hypermobility_numeric",
-#   # "dem.pots_numeric", "dem.diabetes_type_1_early_onset_numeric",
-#   # "dem.diabetes_type_1_late_onset_numeric",
-#   # "dem.diabetes_type_2_late_onset_numeric",
-#   # "dem.pcos_numeric"
-# )
 
 cache("illnesses")
 
@@ -609,7 +550,7 @@ cache("lab_grouped_illnesses")
 # Helper to pivot med columns to long format
 pivot_meds <- function(df, prefix, value_name) {
   df %>%
-    select(-contains("a_different_antidepressants")) %>%
+    select(-contains("a_different_antidepressant")) %>%
     na_convert() %>%
     pivot_longer(
       cols = starts_with(prefix),
@@ -623,16 +564,45 @@ pivot_meds <- function(df, prefix, value_name) {
 
 # 1. Start Age & Cumulative Count (Ordering)
 # ------------------------------------------------------------------------------
-# We use start age to determine the order of medications
-start_age_long <- antidepressants_why_glad_med_id %>%
-  pivot_meds("antidepressants_why.started_taking", "start_age") %>%
-  mutate(medication = str_remove(medication, "^txt\\.")) %>%
-  # Filter invalid ages
-  dplyr::mutate(start_age = ifelse(start_age < 5 | start_age > 100, NA, start_age)) %>%
-  filter(!is.na(start_age)) %>%
+# Medication-use long table (used across outcomes)
+med_use_long <- prescription_antidepressants_id %>%
+  na_convert() %>%
+  pivot_meds("prescription", "took_med") %>%
+  dplyr::mutate(took_med = coalesce(took_med, 0))
+
+taken_meds_long <- med_use_long %>%
+  filter(took_med == 1) %>%
+  select(ID, medication)
+
+# We use start age to determine the order of medications.
+# For taken medications with missing start age, assign them to the same age as
+# the last valid medication age for that participant.
+start_age_long <- taken_meds_long %>%
+  left_join(
+    antidepressants_why_glad_med_id %>%
+      pivot_meds("antidepressants_why.started_taking", "start_age") %>%
+      mutate(medication = str_remove(medication, "^txt\\.")),
+    by = c("ID", "medication")
+  ) %>%
+  dplyr::mutate(start_age_valid = ifelse(start_age < 5 | start_age > 100, NA, start_age)) %>%
   group_by(ID) %>%
-  arrange(start_age) %>%
-  dplyr::mutate(cumulative_med_count = row_number()) %>%
+  dplyr::arrange(start_age_valid, medication, .by_group = TRUE) %>%
+  dplyr::mutate(
+    n_missing_start_age = sum(is.na(start_age_valid)),
+    n_valid_start_age = sum(!is.na(start_age_valid)),
+    last_start_age = ifelse(n_valid_start_age > 0, max(start_age_valid, na.rm = TRUE), NA_real_),
+    base_cumulative_med_count = ifelse(!is.na(start_age_valid), cumsum(!is.na(start_age_valid)), NA_integer_),
+    final_cumulative_med_count = ifelse(n_valid_start_age > 0,
+      n_valid_start_age + n_missing_start_age,
+      n_missing_start_age
+    ),
+    cumulative_med_count = case_when(
+      !is.na(start_age_valid) & base_cumulative_med_count == n_valid_start_age ~ final_cumulative_med_count,
+      !is.na(start_age_valid) ~ base_cumulative_med_count,
+      TRUE ~ final_cumulative_med_count
+    ),
+    start_age = ifelse(is.na(start_age_valid) & n_valid_start_age > 0, last_start_age, start_age_valid)
+  ) %>%
   ungroup() %>%
   select(ID, medication, start_age, cumulative_med_count)
 
@@ -660,9 +630,17 @@ se_long <- se_long_raw %>%
     names_from = variable,
     values_from = value
   ) %>%
+  left_join(med_use_long, by = c("ID", "medication")) %>%
+  dplyr::mutate(took_med = coalesce(took_med, 0)) %>%
   rowwise() %>%
   dplyr::mutate(
-      n_se = sum(c_across(dry_mouth:other), na.rm = TRUE)
+    all_se_missing = all(is.na(c_across(dry_mouth:other))),
+    n_se_raw = sum(c_across(dry_mouth:other), na.rm = TRUE),
+    n_se = case_when(
+      took_med == 1 & all_se_missing ~ 0,
+      took_med == 0 & all_se_missing ~ 0,
+      TRUE ~ n_se_raw
+    )
   ) %>%
   ungroup() %>%
   select(ID, medication, n_se)
@@ -682,11 +660,9 @@ ben_static <- antidepressants_ben_glad_med_id %>%
 
 n_best_static <- antidepressants_ben_glad_med_id %>%
   na_convert() %>%
-  rowwise() %>%
   dplyr::mutate(
-    n_best = sum(c_across(starts_with("antidepressants_ben.") & !ends_with("txt") & !contains("benefits_rate")), na.rm = TRUE)
+    n_best = rowSums(dplyr::select(., starts_with("antidepressants_ben.") & where(is.numeric) & !contains("benefits_rate")), na.rm = TRUE)
   ) %>%
-  ungroup() %>%
   id_select(n_best)
 
 # 6. Intolerance (Stopped due to SE)
@@ -697,13 +673,12 @@ intolerance_long <- sideeffects_antidepressants_id %>%
 
 # 7. Join Everything (Longitudinal Part)
 # ------------------------------------------------------------------------------
-med_data_long <- start_age_long %>%
-  full_join(eff_long, by = c("ID", "medication")) %>%
-  full_join(se_long, by = c("ID", "medication")) %>%
-  full_join(remission_long, by = c("ID", "medication")) %>%
-  # full_join(ben_long, by = c("ID", "medication")) %>% # Removed as it is static
-  # full_join(n_best_long, by = c("ID", "medication")) %>% # Removed as it is static
-  full_join(intolerance_long, by = c("ID", "medication"))
+med_data_long <- taken_meds_long %>%
+  left_join(start_age_long, by = c("ID", "medication")) %>%
+  left_join(eff_long, by = c("ID", "medication")) %>%
+  left_join(se_long, by = c("ID", "medication")) %>%
+  left_join(remission_long, by = c("ID", "medication")) %>%
+  left_join(intolerance_long, by = c("ID", "medication"))
 
 # 8. Join with Static Demographics
 # ------------------------------------------------------------------------------
@@ -723,6 +698,7 @@ static_dat_list <- list(
   wsas_med,
   n_relatives,
   smoking_pack_year,
+  se_rating,
   ben_static,  # Added
   n_best_static, # Added
   avg_start_age # Added
@@ -766,7 +742,6 @@ labels <- c(
   "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
   "Full or part-time student v.s In paid employment or self-employed",
   "Looking after home and/or family v.s In paid employment or self-employed",
-  "None of the above v.s In paid employment or self-employed",
   "Retired v.s In paid employment",
   "Unable to work because of sickness or disability v.s In paid employment or self-employed",
   "Unemployed v.s. In paid employment or self-employed",
@@ -796,7 +771,8 @@ labels <- c(
   "Pack years of cigarettes smoked",
   "Benefit rating",
   "Number of best aspects",
-  "Average starting age/10"
+  "Average starting age/10",
+  "Side effect severity rating"
 )
 
 # Map labels to column names
@@ -814,7 +790,6 @@ label_names <- c(
   "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
   "In_paid_employment_or_self_employed_Full_or_part_time_student",
   "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
-  "In_paid_employment_or_self_employed_None_of_the_above",
   "In_paid_employment_or_self_employed_Retired",
   "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
   "In_paid_employment_or_self_employed_Unemployed",
@@ -844,7 +819,8 @@ label_names <- c(
   "pack_year",
   "ben_rating",
   "n_best",
-  "avg_start_age"
+  "avg_start_age",
+  "se_rating"
 )
 
 labels <- setNames(labels, label_names)
