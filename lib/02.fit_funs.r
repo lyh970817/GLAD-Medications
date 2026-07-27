@@ -88,7 +88,6 @@ fit_glmm <- function(dep, indeps, data, family = NULL) {
 }
 
 fit_hurdle <- function(dep, indeps, data) {
-  # indeps <- indeps[indeps %in% colnames(dat)]
   data <- na.omit(data[c(dep, indeps)])
 
   # Create variable for logistic regression
@@ -105,10 +104,6 @@ fit_hurdle <- function(dep, indeps, data) {
   # Fit logistic and gamma glm
   m0 <- glm(fm_zero, data = data, family = binomial(link = logit))
   m <- glm(fm, data = data_gamma, Gamma(link = "log"))
-
-  # Check residuals
-  # print(termplot(m0, partial.resid = T, dataa = data))
-  # print(termplot(m, partial.resid = T, dataa = data_gamma))
 
   ms <- select_model_fields(m0, stp = 1) %>%
     bind_rows(select_model_fields(m, stp = 2))
