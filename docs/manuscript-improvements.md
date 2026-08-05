@@ -1,5 +1,24 @@
 # Improvement suggestions — GLAD antidepressants manuscript
 
+## Status as of 2026-08-05 (second pass)
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Degenerate CIs in adjusted Remission | **Void** — root cause was lme4's optimiser, not separation; fixed in `lib/02.fit_funs.r`, Table 2d now carries a real adjusted column |
+| 2 | Figures and tables corrected differently | **Void** — both now pass the same `n_deps` (4) in `src/03.results_plot.r` |
+| 3 | Methods misdescribe the correction | **Applied** (section A3) |
+| 4 | Sample size at both levels | **Applied** — 25,453 medication observations from 8,011 participants, mean 3.18 (median 3, range 1–20), stated in *Longitudinal models* and in every table footnote |
+| 5 | Marginal-associations limitation | **Applied** — in Methods and in *Strengths and limitations* |
+| 6 | Random-intercept variance / ICC | **Applied** — 43% remission, 37% stopping, 11% effectiveness; the Poisson count model has no closed-form ICC and none is claimed |
+| 7 | "Average starting age" / "total duration" vs the GLMM | **Applied** — Abstract, Discussion and Conclusion reconciled; both variables retained where the per-participant models still support them |
+| 8 | Numbers on the PHQ-9 sensitivity analysis | **Void** — PHQ-9 is a covariate inside the adjusted longitudinal models, so there is no separate sensitivity result to quantify. The family-history sensitivity analysis is reported with numbers instead |
+| 9 | CIs running off the panel edge | **Applied** — measured: 13 intervals exceed the limit of 2, three of them significant. All four captions now say the axis is truncated |
+| 10 | No overdispersion check on the Poisson model | **Applied, and measured rather than caveated** — conditional on the participant random intercept the Pearson dispersion is 1.26 (marginal variance/mean is 4.83, but the random intercept absorbs most of it). Reported as a limitation with the number |
+
+The "Not worth doing" list at the foot still stands, except that the two-part
+model justification **was** deleted rather than rewritten, as recommended.
+
+
 Scope as briefed: **small changes only** — completeness and correctness. No
 reframing, no new analyses beyond what is already fitted, no reorganising, no
 rewriting the Introduction.

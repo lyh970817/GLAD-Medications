@@ -1,6 +1,58 @@
 # Proposed prose changes — GLAD antidepressants manuscript
 
-## Update 2026-08-05 — what has now been applied, and what has not
+## Update 2026-08-05 (second pass) — EVERYTHING IN THIS FILE IS NOW APPLIED
+
+The whole of sections A, B and C below has been applied to the working copy,
+together with the items from `docs/manuscript-improvements.md` that still stood,
+and the "Still to come" list at the foot of this file. Verified by re-exporting
+the document and matching 27 new strings and the absence of 10 stale ones.
+
+Three items were **revised before applying** because the refit had overtaken the
+draft:
+
+- **B4 and B6** named family history as an adjustment covariate. It is no longer
+  one. The applied text says the adjusted longitudinal models control for sex,
+  starting age, cumulative medication count and depressive symptoms, and the
+  per-participant models for sex, average starting age and family history.
+- **B3** was folded into the new *Longitudinal models* paragraph rather than
+  added as its own subsection, so that Methods states it once.
+- **C6** kept "total duration on antidepressants", which the draft dropped. It is
+  still significant for side effect severity rating (Table 1b), so removing it
+  would have deleted a real finding.
+
+⚠️ **One substantive reversal, flagged for your attention.** The paragraph in
+*Replications* that read "the individual psychiatric diagnoses … showed
+associations with **less** reporting of side effects" is contradicted by the
+refitted models, which show the opposite direction. Obsessive compulsive
+disorders (RR 1.15; OR 1.25) and having only a bipolar disorder (RR 1.16;
+OR 1.78) are associated with **more** side effects and a **higher** likelihood of
+stopping, and personality disorders with a higher likelihood of stopping (OR
+1.48). Eating disorders, personality disorders and psychotic-and-bipolar are no
+longer significant for the number of side effects at all. The paragraph has been
+rewritten to state the direction the current models support, which means the
+"in contrast to previous research" framing now attaches to the cardiometabolic
+finding rather than to the diagnoses. **This is a change of scientific claim, not
+of wording — please read it.**
+
+Also applied from `manuscript-improvements.md`: item 4 (sample sizes at both
+levels), item 5 (marginal-associations limitation), item 6 (ICC), item 7
+(starting age / total duration reconciled), item 9 (axis-truncation note in all
+four captions), item 10 (overdispersion — measured, Pearson dispersion 1.26, not
+merely caveated). Items 1, 2, 3 and 8 no longer stand: 1 and 2 were fixed in
+code, 3 is section A3 and is applied, and 8 is void because PHQ-9 is a covariate
+inside the adjusted models rather than a separate sensitivity analysis.
+
+**Not applied, deliberately:** the Introduction rewrites proposed in
+`docs/manuscript-comment-audit.md` threads 3, 5, 6, 7 and 8. Those change the
+framing of the Introduction and the stated contribution, which the brief for this
+work explicitly scoped out ("no reframing … no rewriting the Introduction"). They
+remain drafted and ready in that file. Six bold "Supplementary …" cross-
+references also remain bold; the emphasis bold that Thalia Eley's comment was
+anchored to is gone from the Discussion.
+
+---
+
+## Update 2026-08-05 (first pass) — what had been applied then
 
 The convergence fix and the change of adjustment set (see the `glmm-refit`
 branch) made parts of the document factually wrong rather than merely out of
