@@ -1,7 +1,59 @@
 # Proposed prose changes — GLAD antidepressants manuscript
 
-**Nothing in here has been applied to the document.** Task 1 (figures and tables)
-is mechanical and proceeds separately; this file is the approval gate for prose.
+## Update 2026-08-05 — what has now been applied, and what has not
+
+The convergence fix and the change of adjustment set (see the `glmm-refit`
+branch) made parts of the document factually wrong rather than merely out of
+date. Those sentences were corrected in the working copy; everything else in
+this file is still proposed, not applied.
+
+**Applied to the document:**
+
+- **A1** — the stray `G` in the "GResults" heading is gone.
+- **The two Results lead-ins** that read "Results adjusted for sex, average
+  antidepressant starting age and number of relatives with a psychiatric
+  disorder…" now name both adjustment sets, because the tables mix longitudinal
+  and per-participant estimates and the two are no longer adjusted for the same
+  covariates.
+- **The analysis-plan sentence** in the side effect section, same reason, with
+  item 5's one-model-per-predictor limitation folded into it ("marginal rather
+  than mutually adjusted").
+- **Methods, *Sensitivity analyses*** — PHQ-9 is described as what it actually
+  is, a covariate inside the adjusted longitudinal models, and the new family
+  history sensitivity analysis is described.
+- **Results, *Sensitivity Analyses*** — the unsupported "little impact on the
+  results" claim and the references to Supplementary Tables 3a–3c and 4a–4e,
+  which do not exist, are replaced with the measured result: adding family
+  history restricts the analysis to 59% of medication observations, shifts
+  estimates by a median of 0.03 on the log odds ratio scale, and changes the
+  significance status of 17 of 122 associations, predominantly by losing
+  significance in the smaller sample.
+
+**Applied to the tables and figures:** all eight Results tables regenerated from
+the refitted models (Table 2d now carries a real adjusted column), all N
+footnotes now give observations *and* participants plus the per-model range, and
+the two Psychiatric History panels in Figures 1a and 2a were replaced. The other
+twelve panels are unchanged because the legacy models were not refitted and the
+remaining GLMM predictor sets reproduce identically.
+
+**Still proposed and NOT applied** — everything from section B1, B2, B6, B7 and
+sections C1–C6 below, plus A4 (list numbering) and A5 (bold removal). B4 and B5
+are superseded by the applied changes above. Two additions are still needed and
+are not yet drafted against your voice:
+
+- the Methods paragraph describing the GLMM itself (B1/B2), which should now
+  also give the participant random-intercept ICC: 0.43 for remission, 0.37 for
+  stopping because of side effects, 0.11 for effectiveness. The Poisson count
+  model has no closed-form ICC and none is reported.
+- the sample-size sentence (C7), now answerable: 25,453 medication observations
+  from 8,011 participants, a mean of 3.18 antidepressants each (median 3, range
+  1–20).
+
+---
+
+**Nothing in the sections below has been applied to the document.** Task 1
+(figures and tables) is mechanical and proceeds separately; this file is the
+approval gate for prose.
 
 Working copy: <https://docs.google.com/document/d/1HLqTwR0Kpuq4ZxMEPAbeLrxd4_MN9DcLSnSPvjZ5ZJs/edit>
 Original (untouched): `1cfsu36WVseKARucjVfz15kIZYw0LSOfP8iMGaIydyMc`
