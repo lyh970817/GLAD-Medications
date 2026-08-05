@@ -19,11 +19,17 @@ Adjusted estimates appear in brackets where the adjusted model is also
 significant, matching the existing manuscript convention. Rows shown only in
 brackets are significant after adjustment but not before.
 
-**Status in the document:** only **Table 1a** has been applied. See
-`docs/manuscript-text-changes.md` for why the remaining seven are still
-outstanding. Ready-to-paste HTML for all eight is in
-`docs/manuscript-tables/` — opening one and copying it in the browser, then
-pasting over the old table in the Doc, is the manual route.
+**Status in the document: all eight applied**, verified from the DOCX export
+(row counts match, no residual heading styles, no stray text). Ready-to-paste
+HTML for each is kept in `docs/manuscript-tables/` for re-use.
+
+Two notes for whoever repeats this. Pasting a table into Docs fails silently
+once the renderer has been up for a while — reload the document page and it
+works again. And a table pasted where the caret sits in a heading paragraph
+inherits **Heading 4**, which turns every cell into a document-outline entry;
+select the pasted table and press Ctrl+Alt+0 to reset it to Normal text.
+Select top-down (header cell, then shift-click the bottom-right cell) — going
+bottom-up selects a single column.
 
 **Table 2d carries a warning.** The adjusted GLMM remission model produced ten
 zero-width confidence intervals, so no adjusted column is reported for that

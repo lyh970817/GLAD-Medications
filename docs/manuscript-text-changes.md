@@ -30,18 +30,19 @@ These were mechanical and are done — figures and tables, per the brief:
 - All four captions rewritten: the "red" claim replaced with orange/grey, and
   the a/b split relabelled from unadjusted/adjusted to longitudinal/
   per-participant, which is what the panels now show.
-- **Table 1a** replaced with the current Poisson rate ratios, its heading
-  updated to "the number of side effects", and the two-part-model note beneath
-  it replaced.
+- **All eight Results tables** replaced with the current numbers, each carrying
+  an N footnote that states whether N counts medication observations or
+  participants. Table 2d omits the adjusted column, with a footnote saying why.
+- Table headings updated where the outcome changed: 1a → "the number of side
+  effects", 1c → "stopping a medication because of side effects", 2a →
+  "effectiveness". The two-part-model note under Table 1a was replaced.
 
-**Tables 1b, 1c, 2a, 2b, 2c, 2d and 2e are not yet replaced.** They still hold
-the old numbers. The replacements are generated and reviewable in
-`docs/manuscript-tables-current.md`, with ready-to-paste HTML in
-`docs/manuscript-tables/`. The blocker is mechanical, not analytical: pasting a
-table into Docs through the automation clipboard stopped working partway
-through — images and find-and-replace kept working, table paste did not. Nothing
-was left broken; I verified the document still has 8 tables and 14 images and
-undid every partial edit.
+Verified from the DOCX export: 8 tables with row counts matching the generated
+tables exactly, 14 images all at full column width, no residual heading styles
+inside the tables, and no stray text.
+
+The one item from section A still outstanding is **A1**, the stray `G` in
+"GResults" — left alone because it sits with the prose changes below.
 
 ---
 
