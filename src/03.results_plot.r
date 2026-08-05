@@ -29,50 +29,13 @@ labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 N_DEPS_NONLONG <- length(sef_models) + length(eff_models)
 N_DEPS_GLMM <- length(glmm_models)
 
-plot_sef <- plot_models_publication(
-  multi_adjust(sef_models, n_deps = N_DEPS_NONLONG)
-)
-
-plot_eff <- plot_models_publication(
-  multi_adjust(eff_models, n_deps = N_DEPS_NONLONG)
-)
-
-cache("plot_sef")
-cache("plot_eff")
-
-ggsave(
-  filename = "./graphs/sef.png", plot = plot_sef,
-  height = 35, width = 15
-)
-ggsave(
-  filename = "./graphs/eff.png", plot = plot_eff,
-  height = 38, width = 15
-)
-
-
-# Plot sef_models_compete
-plot_sef_compete <- plot_models_publication(
-  multi_adjust(sef_models_compete, n_deps = N_DEPS_NONLONG)
-)
-
-# Save sef_compete plot
-ggsave(
-  filename = "./graphs/sef_compete_new.png",
-  plot = plot_sef_compete,
-  height = 35, width = 15
-)
-
-# Plot eff_models_compete
-plot_eff_compete <- plot_models_publication(
-  multi_adjust(eff_models_compete, n_deps = N_DEPS_NONLONG)
-)
-
-# Save eff_compete plot
-ggsave(
-  filename = "./graphs/eff_compete.png",
-  plot = plot_eff_compete,
-  height = 38, width = 15
-)
+# The monolithic all-predictors-in-one-figure plots were removed on 2026-08-05.
+# They were 15 x 35-40 in, which is an aspect ratio of 2.3-2.7; anything above
+# about 1.42 is capped by page height rather than column width when placed in
+# the document, so they rendered at roughly 4 in wide with illegible text. The
+# manuscript uses the thematic grouped panels below instead, and nothing else
+# consumed the monolithic files. Removing them also drops the two slowest
+# ggsave() calls in the script.
 
 # Function to save grouped plots by thematic categories
 predictor_groups_list <- list(
@@ -220,27 +183,7 @@ save_grouped_plots(eff_models_compete, "eff_compete", n_deps = N_DEPS_NONLONG)
 # glmm_models (Unadjusted)
 # glmm_models_cov (Adjusted)
 
-# 1. Main Plots (Forest plots for all predictors)
-# ------------------------------------------------------------------------------
-plot_glmm <- plot_models_publication(
-  multi_adjust(glmm_models, n_deps = N_DEPS_GLMM)
-)
-
-plot_glmm_cov <- plot_models_publication(
-  multi_adjust(glmm_models_cov, n_deps = N_DEPS_GLMM)
-)
-
-ggsave(
-  filename = "./graphs/glmm_all.png", plot = plot_glmm,
-  height = 40, width = 15, limitsize = FALSE
-)
-
-ggsave(
-  filename = "./graphs/glmm_all_cov.png", plot = plot_glmm_cov,
-  height = 40, width = 15, limitsize = FALSE
-)
-
-# 2. Grouped Plots
+# 1. Grouped Plots
 # ------------------------------------------------------------------------------
 # Split by outcome type for better visualization
 # glmm_deps: "effectiveness", "n_se", "remission", "stopped_due_to_se"
@@ -264,33 +207,7 @@ save_grouped_plots(glmm_models_sef, "glmm_sef", n_deps = N_DEPS_GLMM)
 save_grouped_plots(glmm_models_cov_eff, "glmm_eff_cov", n_deps = N_DEPS_GLMM)
 save_grouped_plots(glmm_models_cov_sef, "glmm_sef_cov", n_deps = N_DEPS_GLMM)
 
-# 3. Combined plots for outcome groups (Requested in plan)
-# ------------------------------------------------------------------------------
-
-# Unadjusted Effectiveness
-plot_glmm_eff <- plot_models_publication(multi_adjust(glmm_models_eff, n_deps = N_DEPS_GLMM))
-ggsave(
-  filename = "./graphs/glmm_eff.png", plot = plot_glmm_eff,
-  height = 30, width = 15, limitsize = FALSE
-)
-
-# Unadjusted Side Effects
-plot_glmm_sef <- plot_models_publication(multi_adjust(glmm_models_sef, n_deps = N_DEPS_GLMM))
-ggsave(
-  filename = "./graphs/glmm_sef.png", plot = plot_glmm_sef,
-  height = 30, width = 15, limitsize = FALSE
-)
-
-# Adjusted Effectiveness (Compete)
-plot_glmm_eff_cov <- plot_models_publication(multi_adjust(glmm_models_cov_eff, n_deps = N_DEPS_GLMM))
-ggsave(
-  filename = "./graphs/glmm_eff_compete.png", plot = plot_glmm_eff_cov,
-  height = 30, width = 15, limitsize = FALSE
-)
-
-# Adjusted Side Effects (Compete)
-plot_glmm_sef_cov <- plot_models_publication(multi_adjust(glmm_models_cov_sef, n_deps = N_DEPS_GLMM))
-ggsave(
-  filename = "./graphs/glmm_sef_compete.png", plot = plot_glmm_sef_cov,
-  height = 30, width = 15, limitsize = FALSE
-)
+# The combined per-outcome-group figures (glmm_eff.png, glmm_sef.png,
+# glmm_eff_compete.png, glmm_sef_compete.png) were removed on 2026-08-05 for the
+# same reason as the other monolithic plots: too tall to render legibly in the
+# document, and superseded by the thematic panels above.

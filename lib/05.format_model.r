@@ -111,8 +111,13 @@ format_model <- function(model) {
     )
   }
 
-  attr(tab, "dep") <- attr(model, "dep")
-  attr(tab, "n") <- attr(model, "n")
+  # Carry the fit's provenance through formatting: the outcome, the sample size
+  # at both levels, the convergence warnings and the participant random-intercept
+  # variance. Losing these here is what made a non-converged fit indistinguishable
+  # from a good one downstream.
+  for (a in c("dep", "n", "n_id", "fit_warnings", "converged", "re_var", "icc")) {
+    attr(tab, a) <- attr(model, a)
+  }
 
   tab
 }
