@@ -96,14 +96,16 @@ bind_models <- function(models) {
 glmm_deps <- c(
   "effectiveness",      # Ordinal
   "n_se",               # Count
-  "remission",          # Binary (Ordinal in code but 0/1/2 levels? Check)
+  "remission",          # Binary
   "stopped_due_to_se"   # Binary
 )
 
-# Check remission levels
-# If remission has > 2 levels, it will be treated as ordinal.
-# If it is 0/1, it is binary.
-# In munge/01.dat_clean.r, we made it a factor. fit_glmm handles factors.
+# Checked 2026-08-05: remission is binary. The raw item
+# antidepressants_imprv.condition_period_time_experience only ever takes 0, 1
+# and -777 (missing), and dat_long$remission has exactly two levels, both
+# observed (0: 9812, 1: 7645). The factor(ordered = TRUE) applied in
+# munge/01.dat_clean.r is therefore a no-op, and fit_glmm()'s binary branch
+# routing this to binomial glmer is correct, not a fallback.
 
 # Base covariates for adjustment (competing independents)
 # Added cumulative_med_count as requested

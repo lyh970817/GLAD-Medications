@@ -184,14 +184,7 @@ whether any changed direction. The numbers are already in
 
 ## Tier 3 — worth doing, small gain
 
-### 9. Say why remission is fitted as binomial
-
-One Methods sentence. `remission` is ordered-coded but has only two observed
-levels, so `fit_glmm()` routes it to binomial `glmer` rather than `clmm`. A
-reader told remission is ordinal and then shown odds ratios from a binary model
-has no way to reconcile the two.
-
-### 10. Handle the confidence intervals that run off the panel edge
+### 9. Handle the confidence intervals that run off the panel edge
 
 `lib/07.plot_funcs.r` sets `coord_cartesian(xlim = c(NA, 2), clip = "off")`. Ten
 intervals exceed that bound and are drawn leaving the panel with no truncation
@@ -201,7 +194,7 @@ duration (1.52 [1.11, 2.08]). Cheapest honest fix is a caption sentence saying
 the axis is truncated at 2 and giving the affected estimates in the table.
 Raising the cap compresses every other panel, so I would not do that.
 
-### 11. Mention that no overdispersion check was run on the Poisson count model
+### 10. Mention that no overdispersion check was run on the Poisson count model
 
 `n_se` is a Poisson `glmer` over a side-effect checklist. Checklist counts
 commonly overdisperse, and Poisson standard errors are anticonservative when they
