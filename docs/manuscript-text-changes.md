@@ -14,10 +14,34 @@ first-person plural, British spelling, the same hedging ("may", "tend to",
 "indicating that"), and the same sentence lengths. Where only a number changed I
 changed only the number.
 
-Sections **A** and **B** are ready regardless of which estimates you choose.
-Section **C** depends on the family decision and is drafted against the
-combination option — flagged throughout, and I will redo it if you choose
-differently.
+**The family decision is settled: the combination.** Longitudinal estimates for
+the four outcomes the GLMM covers (number of side effects, stopping because of
+side effects, effectiveness, remission), per-participant estimates for the four
+it does not (side effect severity rating, benefit rating, number of best
+aspects, first improvement duration). Everything below assumes that.
+
+## What has already been applied to the document
+
+These were mechanical and are done — figures and tables, per the brief:
+
+- All four figures replaced with the thematic grouped panels: 14 panels total,
+  every one verified rendering at the full 6.27 in column width.
+- The stray test image after reference 63 removed.
+- All four captions rewritten: the "red" claim replaced with orange/grey, and
+  the a/b split relabelled from unadjusted/adjusted to longitudinal/
+  per-participant, which is what the panels now show.
+- **Table 1a** replaced with the current Poisson rate ratios, its heading
+  updated to "the number of side effects", and the two-part-model note beneath
+  it replaced.
+
+**Tables 1b, 1c, 2a, 2b, 2c, 2d and 2e are not yet replaced.** They still hold
+the old numbers. The replacements are generated and reviewable in
+`docs/manuscript-tables-current.md`, with ready-to-paste HTML in
+`docs/manuscript-tables/`. The blocker is mechanical, not analytical: pasting a
+table into Docs through the automation clipboard stopped working partway
+through — images and find-and-replace kept working, table paste did not. Nothing
+was left broken; I verified the document still has 8 tables and 14 images and
+undid every partial edit.
 
 ---
 
@@ -35,7 +59,7 @@ These are wrong as the document stands, independent of which estimates go in.
 
 > \# **Results**
 
-## A2. Figure captions say red; every current figure is orange
+## A2. Figure captions say red; every current figure is orange  ✅ APPLIED
 
 All four captions carry the same sentence. Applied to each of Figures 1a, 1b, 2a,
 2b.
@@ -238,11 +262,8 @@ effects, is unchanged and still reads correctly.
 
 # C. Results and Discussion — number-level changes
 
-⚠️ **This section assumes the combination option** (longitudinal estimates for
-the four outcomes the GLMM covers; per-participant estimates for the four it does
-not). It is drafted so you can judge it, not because the choice is made. If you
-pick GLMM-only or legacy-only I will rewrite this section — sections A and B are
-unaffected either way.
+Written against the confirmed combination decision. Still awaiting your approval
+before anything here goes into the document.
 
 ## C1. Abstract — Results
 
