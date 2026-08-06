@@ -473,3 +473,33 @@ will read as an error unless stated. Getting the number means loading
   with higher effectiveness "across the five effectiveness measures".
 - The `Characteristics associated with…` analysis plan paragraphs, which list the
   outcome sets.
+
+---
+
+## Update 2026-08-06 — rebuilt on the correct (Revised) manuscript
+
+The earlier work was applied to a copy of a superseded version. Redone on a copy
+of the correct one: <https://docs.google.com/document/d/1-0ONBcphSqpF4DyABWPTxUCAiPX6gHy9IySrWGf9uts/edit>
+(the "(Revised)" master `1rFc8o…` is untouched, verified by modifiedTime).
+
+**Repaired first:** the Revised version contained a paste accident — a corrected
+copy of the three *Replications* paragraphs had been pasted into the middle of
+the *Novel findings* paragraph and truncated mid-phrase ("…only bipolar disorder
+and psychotic and (i.e. …"). Both copies were present; the giveaway was that the
+spliced one had the "commorbidity" typo fixed. Removed the duplicate and restored
+the paragraph.
+
+**Applied:** all prose from sections A/B/C, the improvement items that stood, the
+within-person argument (abstract, introduction, discussion), the comment-8 trims
+of the three remaining Methods justification paragraphs, all eight tables, and
+four figures each with its own caption.
+
+**Verified from the export:** table row counts 24/7/21/30/21/18/16/18 all exact,
+8 N-footnotes, 3 ICC footnotes, 28 headings, document outline exactly 26 real
+entries (no table cells leaking in), all stale text gone.
+
+**Outstanding:** the figure set is 4 of the planned 14 thematic panels. The
+document currently carries the demographic and psychiatric-history panels for
+each of the longitudinal side-effect and effectiveness models. The somatic
+comorbidity and side-effect panels, and the per-participant versions, still need
+adding, each with its own caption.
