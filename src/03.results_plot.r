@@ -97,7 +97,12 @@ save_grouped_plots <- function(models, prefix, n_deps = length(models)) {
   # Adjust models (p-values) first. `n_deps` must be the size of the full
   # outcome set the corresponding workbook corrects over, not the size of this
   # subset — see multi_adjust().
-  models_adj <- multi_adjust(models, n_deps = n_deps)
+  #
+  # bonferroni_ci() then widens the intervals to the same corrected level, so
+  # that the colour (corrected significance) and the bar (the interval) agree.
+  # Without it, one plotted point in ten was drawn grey with an interval that
+  # visibly excluded 1.
+  models_adj <- bonferroni_ci(multi_adjust(models, n_deps = n_deps), n_deps = n_deps)
 
   imap(predictor_groups_list, function(var_names, group_name) {
     # 1. Get target labels

@@ -187,6 +187,31 @@ esc <- function(x) {
   gsub(">", "&gt;", x, fixed = TRUE)
 }
 
+# The manuscript's existing tables carry formatting that a plain HTML paste does
+# not reproduce: Arial 8pt (w:sz 16) in #1f1f1f rather than the 11pt black a
+# paste defaults to, a bold header row shaded #efefef, 0.5pt #1f1f1f cell
+# borders and 6x9px cell padding. These were read out of the DOCX export of the
+# manuscript (w:rPr / w:tcPr on the first table) so that a regenerated table
+# drops into the document looking like the ones already there.
+CELL_BORDER <- "border:0.5pt solid #1f1f1f;padding:6px 9px;vertical-align:top;"
+CELL_FONT <- "font-family:Arial,sans-serif;font-size:8pt;color:#1f1f1f;"
+HEADER_FILL <- "background-color:#efefef;"
+
+td_cell <- function(text, head = FALSE, italic = FALSE, span = 1) {
+  paste0(
+    '<td style="', CELL_BORDER, if (head) HEADER_FILL else "", '"',
+    if (span > 1) paste0(' colspan="', span, '"') else "", ">",
+    '<p style="margin:0;line-height:1.15;"><span style="', CELL_FONT,
+    if (head) "font-weight:700;" else "",
+    if (italic) "font-style:italic;" else "", '">',
+    esc(text), "</span></p></td>"
+  )
+}
+
+td_row <- function(cells, head = FALSE) {
+  paste0("<tr>", paste0(vapply(cells, td_cell, character(1), head = head), collapse = ""), "</tr>")
+}
+
 md <- c(
   "# Results tables — current numbers",
   "",
@@ -238,15 +263,15 @@ for (spec in TABLES) {
   )
 
   html <- paste0(
-    '<meta charset="utf-8"><table border="1" style="border-collapse:collapse">',
-    "<tr><td><b>Parameter</b></td><td><b>", esc(header),
-    "</b></td><td><b>p (adjusted)</b></td></tr>",
+    '<meta charset="utf-8"><table style="border-collapse:collapse;">',
+    td_row(c("Parameter", header, "p (adjusted)"), head = TRUE),
     paste0(
-      "<tr><td>", esc(tab$Parameter), "</td><td>", esc(tab$estimate),
-      "</td><td>", esc(tab$pval), "</td></tr>",
+      mapply(function(a, b, c) td_row(c(a, b, c)),
+        tab$Parameter, tab$estimate, tab$pval
+      ),
       collapse = ""
     ),
-    '<tr><td colspan="3"><i>', esc(foot), "</i></td></tr></table>"
+    "<tr>", td_cell(foot, span = 3, italic = TRUE), "</tr></table>"
   )
   writeLines(html, file.path(out_dir, paste0("table_", spec$id, ".html")))
   message("  wrote table ", spec$id, " (", nrow(tab), " rows)")

@@ -1,6 +1,6 @@
 # Results tables — current numbers
 
-Generated 2026-08-05 by `src/04.manuscript_tables.r` from the
+Generated 2026-08-06 by `src/04.manuscript_tables.r` from the
 cached model objects, under the **combination** decision: longitudinal (GLMM)
 estimates for the four outcomes the GLMM covers, per-participant (legacy)
 estimates for the four it does not.

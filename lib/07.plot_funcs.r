@@ -54,9 +54,17 @@ plot_models_publication <- function(models) {
   }
 
   # --- 2. PREPARATION ---
+  # A missing p value is not evidence of significance. `ifelse(p < 0.05, ...)`
+  # returned NA for those rows, which ggplot then drew in its own default grey,
+  # indistinguishable from a genuine non-significant estimate.
   plot_data <- plot_data %>%
     mutate(
-      Significance = ifelse(p < 0.05, "Significant", "Insignificant"),
+      # A fixed level set, so that every panel's legend shows both categories
+      # even when a panel happens to contain only one of them.
+      Significance = factor(
+        ifelse(!is.na(p) & p < 0.05, "Significant", "Not significant"),
+        levels = c("Significant", "Not significant")
+      ),
       Outcome = as.factor(Outcome),
       Parameter = factor(Parameter, levels = rev(unique(Parameter)))
     )
@@ -64,7 +72,7 @@ plot_models_publication <- function(models) {
   dodge_width <- 0.7
 
   # --- 3. AESTHETICS ---
-  color_palette <- c("Significant" = "#E69F00", "Insignificant" = "#7F7F7F")
+  color_palette <- c("Significant" = "#E69F00", "Not significant" = "#7F7F7F")
   shape_palette <- c(16, 15, 17, 18, 4, 8)
 
   # --- 4. PLOTTING ---
@@ -85,13 +93,20 @@ plot_models_publication <- function(models) {
       stroke = 0.8,
       position = position_dodge(width = dodge_width)
     ) +
-    scale_color_manual(values = color_palette, guide = "none") +
+    scale_color_manual(values = color_palette, name = NULL, drop = FALSE) +
     scale_shape_manual(values = shape_palette, name = NULL) +
-    guides(shape = guide_legend(nrow = 2)) +
+    guides(
+      shape = guide_legend(nrow = 2, order = 1),
+      colour = guide_legend(nrow = 2, order = 2, override.aes = list(shape = 15, size = 4))
+    ) +
 
-    # Use coord_cartesian to zoom without deleting data
-    coord_cartesian(xlim = c(NA, 2), clip = "off") +
-    labs(x = "Estimate (95% CI)", y = NULL) +
+    # A log scale is the right one for ratio estimates: 0.5 and 2 sit the same
+    # distance either side of the null. It also removes the reason the axis used
+    # to be capped at 2 with `coord_cartesian(xlim = c(NA, 2))`, which drew a
+    # handful of intervals running off the panel edge with no truncation marker.
+    # Every interval now fits inside its panel.
+    scale_x_log10(breaks = c(0.1, 0.25, 0.5, 1, 2, 4), labels = c("0.1", "0.25", "0.5", "1", "2", "4")) +
+    labs(x = "Estimate (Bonferroni-adjusted 95% CI)", y = NULL) +
     theme_minimal(base_size = 16, base_family = "sans") +
     theme(
       axis.line.x = element_line(color = "black", linewidth = 0.5),
