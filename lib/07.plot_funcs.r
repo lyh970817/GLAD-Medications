@@ -5,6 +5,8 @@ plot_models_publication <- function(models) {
       return(NULL)
     }
 
+    if (nrow(df) == 0) return(NULL)
+
     df <- df %>% mutate(Parameter = str_remove(Parameter, "v\\.s.*$"))
 
     if ("Coefficient_logistic" %in% names(df)) {
@@ -24,6 +26,12 @@ plot_models_publication <- function(models) {
 
       bind_rows(part1, part2)
     } else {
+      # Check if 'p' exists
+      if (!"p" %in% names(df)) {
+          warning(paste("Model for", outcome_label, "missing 'p' column. Columns:", paste(names(df), collapse=", ")))
+          return(NULL)
+      }
+
       df %>%
         select(Parameter,
           Estimate = Coefficient,
@@ -40,10 +48,23 @@ plot_models_publication <- function(models) {
     })
   })
 
+  if (nrow(plot_data) == 0) {
+      warning("No data to plot")
+      return(NULL)
+  }
+
   # --- 2. PREPARATION ---
+  # A missing p value is not evidence of significance. `ifelse(p < 0.05, ...)`
+  # returned NA for those rows, which ggplot then drew in its own default grey,
+  # indistinguishable from a genuine non-significant estimate.
   plot_data <- plot_data %>%
     mutate(
-      Significance = ifelse(p < 0.05, "Significant", "Insignificant"),
+      # A fixed level set, so that every panel's legend shows both categories
+      # even when a panel happens to contain only one of them.
+      Significance = factor(
+        ifelse(!is.na(p) & p < 0.05, "Significant", "Not significant"),
+        levels = c("Significant", "Not significant")
+      ),
       Outcome = as.factor(Outcome),
       Parameter = factor(Parameter, levels = rev(unique(Parameter)))
     )
@@ -51,19 +72,19 @@ plot_models_publication <- function(models) {
   dodge_width <- 0.7
 
   # --- 3. AESTHETICS ---
-  color_palette <- c("Significant" = "#E69F00", "Insignificant" = "#7F7F7F")
+  color_palette <- c("Significant" = "#E69F00", "Not significant" = "#7F7F7F")
   shape_palette <- c(16, 15, 17, 18, 4, 8)
 
   # --- 4. PLOTTING ---
   ggplot(plot_data, aes(x = Estimate, y = Parameter, group = Outcome)) +
-    geom_vline(xintercept = 1, linetype = "solid", color = "black", size = 0.4) +
+    geom_vline(xintercept = 1, linetype = "solid", color = "black", linewidth = 0.4) +
 
     # FIXED: Use geom_errorbar instead of geom_errorbarh
     # Note: 'width' here controls the height of the caps on the Y-axis
     geom_errorbar(
       aes(xmin = CI_low, xmax = CI_high, color = Significance),
       width = 0.2,
-      size = 0.6,
+      linewidth = 0.6,
       position = position_dodge(width = dodge_width)
     ) +
     geom_point(
@@ -72,22 +93,29 @@ plot_models_publication <- function(models) {
       stroke = 0.8,
       position = position_dodge(width = dodge_width)
     ) +
-    scale_color_manual(values = color_palette, guide = "none") +
+    # No colour legend: the figure captions already state that orange marks
+    # associations significant after multiple testing correction and grey those
+    # that are not, so a legend would only repeat it.
+    scale_color_manual(values = color_palette, guide = "none", drop = FALSE) +
     scale_shape_manual(values = shape_palette, name = NULL) +
     guides(shape = guide_legend(nrow = 2)) +
 
-    # Use coord_cartesian to zoom without deleting data
-    coord_cartesian(xlim = c(NA, 2), clip = "off") +
-    labs(x = "Estimate (95% CI)", y = NULL) +
+    # A log scale is the right one for ratio estimates: 0.5 and 2 sit the same
+    # distance either side of the null. It also removes the reason the axis used
+    # to be capped at 2 with `coord_cartesian(xlim = c(NA, 2))`, which drew a
+    # handful of intervals running off the panel edge with no truncation marker.
+    # Every interval now fits inside its panel.
+    scale_x_log10(breaks = c(0.1, 0.25, 0.5, 1, 2, 4), labels = c("0.1", "0.25", "0.5", "1", "2", "4")) +
+    labs(x = "Estimate (Bonferroni-adjusted 95% CI)", y = NULL) +
     theme_minimal(base_size = 16, base_family = "sans") +
     theme(
-      axis.line.x = element_line(color = "black", size = 0.5),
+      axis.line.x = element_line(color = "black", linewidth = 0.5),
       axis.text.y = element_text(color = "black", face = "bold", margin = margin(r = 10)),
       axis.text.x = element_text(color = "black"),
       axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
       panel.grid.minor = element_blank(),
       panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"),
-      panel.grid.major.y = element_line(color = "grey85", size = 0.5),
+      panel.grid.major.y = element_line(color = "grey85", linewidth = 0.5),
       legend.position = "bottom",
       legend.justification = "center",
       legend.margin = margin(t = 10),

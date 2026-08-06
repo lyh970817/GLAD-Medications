@@ -1,72 +1,60 @@
-# setwd(".")
 require(ProjectTemplate)
 require(tidyverse)
 require(rlist)
 library(gtable)
 library(grid)
-# install.packages("ggplot2")
 reload.project()
 
-plot_sef <- plot_models_publication(
-  multi_adjust(sef_models)
+# The legacy non-longitudinal models use their own names for the side-effect
+# predictors; these labels are defined in src/02.regression.r and are not part
+# of the cached `labels` object.
+labels_extra <- c(
+  mean_n_se = "Mean number of side effects",
+  intolerance = "Treatment discontinuation",
+  mean_eff = "Average effectiveness",
+  first_imprv = "First improvement duration",
+  time = "Total duration on antidepressants",
+  # Medication-episode analogues of `avg_start_age` and `time`. Only the GLMM
+  # has these; without them the GLMM grouped panels silently drop both, the
+  # same way the legacy panels used to drop mean_n_se and intolerance.
+  start_age = "Start Age",
+  cumulative_med_count = "Cumulative Medication Count"
 )
+labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 
-plot_eff <- plot_models_publication(
-  multi_adjust(eff_models)
-)
+# Bonferroni factor used by the result workbooks: the legacy workbooks correct
+# across c(sef_models, eff_models) and the GLMM workbooks across glmm_models,
+# which is four outcomes in both cases. Every plot below is corrected by the
+# same factor so that figures and tables agree on what is significant.
+N_DEPS_NONLONG <- length(sef_models) + length(eff_models)
+N_DEPS_GLMM <- length(glmm_models)
 
-cache("plot_sef")
-cache("plot_eff")
-
-ggsave(
-  filename = "./graphs/sef.png", plot = plot_sef,
-  height = 35, width = 15
-)
-ggsave(
-  filename = "./graphs/eff.png", plot = plot_eff,
-  height = 38, width = 15
-)
-
-
-# Plot sef_models_compete
-plot_sef_compete <- plot_models_publication(
-  multi_adjust(sef_models_compete)
-)
-
-# Save sef_compete plot
-ggsave(
-  filename = "./graphs/sef_compete_new.png",
-  plot = plot_sef_compete,
-  height = 35, width = 15
-)
-
-# Plot eff_models_compete
-plot_eff_compete <- plot_models_publication(
-  multi_adjust(eff_models_compete)
-)
-
-# Save eff_compete plot
-ggsave(
-  filename = "./graphs/eff_compete.png",
-  plot = plot_eff_compete,
-  height = 38, width = 15
-)
+# The monolithic all-predictors-in-one-figure plots were removed on 2026-08-05.
+# They were 15 x 35-40 in, which is an aspect ratio of 2.3-2.7; anything above
+# about 1.42 is capped by page height rather than column width when placed in
+# the document, so they rendered at roughly 4 in wide with illegible text. The
+# manuscript uses the thematic grouped panels below instead, and nothing else
+# consumed the monolithic files. Removing them also drops the two slowest
+# ggsave() calls in the script.
 
 # Function to save grouped plots by thematic categories
 predictor_groups_list <- list(
   "Demographics_Lifestyle" = c(
     "sex",
+    # Legacy per-participant summaries and their GLMM medication-episode
+    # analogues. Each pipeline contributes only the pair it actually fitted.
     "avg_start_age",
+    "time",
+    "start_age",
+    "cumulative_med_count",
     "bmi",
     "audit",
     "pack_year",
-    "time",
     "Not_in_relationship_In_relationship",
     "Not_in_relationship_Married",
     "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
     "In_paid_employment_or_self_employed_Full_or_part_time_student",
     "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
-    "In_paid_employment_or_self_employed_None_of_the_above",
     "In_paid_employment_or_self_employed_Retired",
     "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
     "In_paid_employment_or_self_employed_Unemployed"
@@ -95,15 +83,26 @@ predictor_groups_list <- list(
     "score_musculoskeletal"
   ),
   "Side_Effects" = c(
-    "mean_n_se",
+    # longitudinal GLMM names
+    "n_se",
     "se_rating",
+    "stopped_due_to_se",
+    # legacy non-longitudinal equivalents
+    "mean_n_se",
     "intolerance"
   )
 )
 
-save_grouped_plots <- function(models, prefix) {
-  # Adjust models (p-values) first
-  models_adj <- multi_adjust(models)
+save_grouped_plots <- function(models, prefix, n_deps = length(models)) {
+  # Adjust models (p-values) first. `n_deps` must be the size of the full
+  # outcome set the corresponding workbook corrects over, not the size of this
+  # subset — see multi_adjust().
+  #
+  # bonferroni_ci() then widens the intervals to the same corrected level, so
+  # that the colour (corrected significance) and the bar (the interval) agree.
+  # Without it, one plotted point in ten was drawn grey with an interval that
+  # visibly excluded 1.
+  models_adj <- bonferroni_ci(multi_adjust(models, n_deps = n_deps), n_deps = n_deps)
 
   imap(predictor_groups_list, function(var_names, group_name) {
     # 1. Get target labels
@@ -176,7 +175,44 @@ save_grouped_plots <- function(models, prefix) {
 }
 
 # Generate grouped plots
-save_grouped_plots(sef_models, "sef")
-save_grouped_plots(eff_models, "eff")
-save_grouped_plots(sef_models_compete, "sef_compete")
-save_grouped_plots(eff_models_compete, "eff_compete")
+save_grouped_plots(sef_models, "sef", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(eff_models, "eff", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(sef_models_compete, "sef_compete", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(eff_models_compete, "eff_compete", n_deps = N_DEPS_NONLONG)
+
+# ==============================================================================
+# GLMM PLOTS
+# ==============================================================================
+
+# GLMM Results are stored in:
+# glmm_models (Unadjusted)
+# glmm_models_cov (Adjusted)
+
+# 1. Grouped Plots
+# ------------------------------------------------------------------------------
+# Split by outcome type for better visualization
+# glmm_deps: "effectiveness", "n_se", "remission", "stopped_due_to_se"
+
+# Define subsets of models based on outcome
+# glmm_models is a list named by dependent variable
+# We can subset the list.
+
+glmm_eff_deps <- c("effectiveness", "remission")
+glmm_sef_deps <- c("n_se", "stopped_due_to_se")
+
+glmm_models_eff <- glmm_models[labels[glmm_eff_deps]]
+glmm_models_sef <- glmm_models[labels[glmm_sef_deps]]
+
+glmm_models_cov_eff <- glmm_models_cov[labels[glmm_eff_deps]]
+glmm_models_cov_sef <- glmm_models_cov[labels[glmm_sef_deps]]
+
+# Save grouped plots
+save_grouped_plots(glmm_models_eff, "glmm_eff", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_sef, "glmm_sef", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_cov_eff, "glmm_eff_cov", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_cov_sef, "glmm_sef_cov", n_deps = N_DEPS_GLMM)
+
+# The combined per-outcome-group figures (glmm_eff.png, glmm_sef.png,
+# glmm_eff_compete.png, glmm_sef_compete.png) were removed on 2026-08-05 for the
+# same reason as the other monolithic plots: too tall to render legibly in the
+# document, and superseded by the thematic panels above.
