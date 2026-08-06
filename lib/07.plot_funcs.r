@@ -93,12 +93,12 @@ plot_models_publication <- function(models) {
       stroke = 0.8,
       position = position_dodge(width = dodge_width)
     ) +
-    scale_color_manual(values = color_palette, name = NULL, drop = FALSE) +
+    # No colour legend: the figure caption already states that orange marks
+    # associations significant after multiple-testing correction and grey those
+    # that are not, so a legend only repeats it.
+    scale_color_manual(values = color_palette, guide = "none", drop = FALSE) +
     scale_shape_manual(values = shape_palette, name = NULL) +
-    guides(
-      shape = guide_legend(nrow = 2, order = 1),
-      colour = guide_legend(nrow = 2, order = 2, override.aes = list(shape = 15, size = 4))
-    ) +
+    guides(shape = guide_legend(nrow = 2)) +
 
     # A log scale is the right one for ratio estimates: 0.5 and 2 sit the same
     # distance either side of the null. It also removes the reason the axis used
