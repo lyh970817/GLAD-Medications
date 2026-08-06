@@ -93,9 +93,9 @@ plot_models_publication <- function(models) {
       stroke = 0.8,
       position = position_dodge(width = dodge_width)
     ) +
-    # No colour legend: the figure caption already states that orange marks
-    # associations significant after multiple-testing correction and grey those
-    # that are not, so a legend only repeats it.
+    # No colour legend: the figure captions already state that orange marks
+    # associations significant after multiple testing correction and grey those
+    # that are not, so a legend would only repeat it.
     scale_color_manual(values = color_palette, guide = "none", drop = FALSE) +
     scale_shape_manual(values = shape_palette, name = NULL) +
     guides(shape = guide_legend(nrow = 2)) +

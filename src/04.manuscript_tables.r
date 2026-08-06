@@ -106,12 +106,21 @@ build_table <- function(unadj_family, adj_family, outcome) {
   tab <- full_join(uu, aa, by = "Parameter") %>%
     filter((!is.na(p_u) & p_u <= 0.05) | (!is.na(p_a) & p_a <= 0.05))
 
-  # Only report an adjusted estimate where the adjusted model is itself
-  # significant, which is the convention the manuscript already uses.
+  # A row appears when *either* model is significant, and then both estimates are
+  # shown. The previous convention printed the adjusted estimate only when it was
+  # itself significant, which made a blank bracket ambiguous: the reader could not
+  # tell a variable that was never estimated (because it is one of the adjustment
+  # covariates) from one that was estimated and attenuated to the null. The second
+  # case is a finding in its own right -- "Married vs. Not in relationship" goes
+  # from 0.88 [0.82, 0.94] to 0.94 [0.88, 1.01] for the number of side effects,
+  # and reverses direction for stopping -- and it used to be invisible.
+  #
+  # A bracket is therefore now absent only when the adjusted model genuinely has
+  # no estimate, i.e. the variable is an adjustment covariate.
   tab <- tab %>%
     mutate(
-      show_u = !is.na(p_u) & p_u <= 0.05,
-      show_a = !is.na(p_a) & p_a <= 0.05,
+      show_u = !is.na(est_u),
+      show_a = !is.na(est_a),
       estimate = case_when(
         show_u & show_a ~ paste0(est_u, " (", est_a, ")"),
         show_u ~ est_u,
