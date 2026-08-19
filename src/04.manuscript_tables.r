@@ -69,10 +69,29 @@ p_col <- function(tab) {
   cols[1]
 }
 
+# Always returns character. `ifelse()` on a zero-length or all-logical-NA input
+# returns a logical vector, which then makes case_when() below fail with an
+# incompatible-type error rather than producing an empty table.
+#
+# Bonferroni multiplication caps the adjusted p values at 1, and printing that
+# cap as "1.000" reads as a three-decimal measurement rather than as "not close
+# to significant". Anything that rounds to 1.000 is reported as ">0.999"
+# instead, the mirror of the "<0.001" used at the other end; the statement holds
+# for a capped value too, since 1 > 0.999.
 fmt_p <- function(p) {
-  ifelse(is.na(p), NA_character_,
-    ifelse(p < 0.001, "<0.001", formatC(round(pmin(p, 1), 3), format = "f", digits = 3))
+  p <- as.numeric(p)
+  out <- rep(NA_character_, length(p))
+  ok <- !is.na(p)
+  if (!any(ok)) {
+    return(out)
+  }
+  pv <- pmin(p[ok], 1)
+  out[ok] <- dplyr::case_when(
+    pv < 0.001 ~ "<0.001",
+    round(pv, 3) >= 1 ~ ">0.999",
+    TRUE ~ formatC(round(pv, 3), format = "f", digits = 3)
   )
+  out
 }
 
 clean_label <- function(x) {
@@ -105,6 +124,12 @@ build_table <- function(unadj_family, adj_family, outcome) {
 
   tab <- full_join(uu, aa, by = "Parameter") %>%
     filter((!is.na(p_u) & p_u <= 0.05) | (!is.na(p_a) & p_a <= 0.05))
+
+  # An outcome with nothing significant is a result, not an error: report it as
+  # a missing table rather than failing partway through the run.
+  if (nrow(tab) == 0) {
+    return(NULL)
+  }
 
   # A row appears when *either* model is significant, and then both estimates are
   # shown. The previous convention printed the adjusted estimate only when it was
@@ -184,8 +209,11 @@ TABLES <- list(
        title = "Variables significantly associated with benefit rating"),
   list(id = "2c", outcome = "Number of best aspects", family = "legacy", effect = "OR",
        title = "Variables significantly associated with the number of best aspects"),
+  # "Occurrence of remission" was participant-level wording for what is in fact a
+  # per-medication outcome: remission is recorded for each antidepressant, and
+  # 44% of participants who took more than one differ across them.
   list(id = "2d", outcome = "Remission", family = "glmm", effect = "OR",
-       title = "Variables significantly associated with occurrence of remission"),
+       title = "Variables significantly associated with remission on a medication"),
   list(id = "2e", outcome = "First improvement duration", family = "legacy", effect = "OR",
        title = "Variables significantly associated with first improvement duration")
 )
