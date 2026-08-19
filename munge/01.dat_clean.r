@@ -219,11 +219,31 @@ ben_rating <- antidepressants_ben_glad_med_id %>%
   id_select(ben_rating = antidepressants_ben.benefits_rate_taking_antidepressantss) %>%
   dplyr::mutate(ben_rating = factor(ben_rating, ordered = TRUE))
 
-# Overall side effect rating
+# Overall side effect rating.
+#
+# The raw item is a star rating -- "Overall, how would you rate the side-effects
+# of taking antidepressants?" -- on which MORE stars means a BETTER rating, i.e.
+# milder side effects. Used raw it therefore runs opposite to its name. Two
+# independent items confirm the orientation: among respondents who had side
+# effects the mean number of side effects falls monotonically from 5.5 at one
+# star to 2.9 at five, and the proportion who stopped a medication because of
+# side effects falls from 0.63 to 0.33.
+#
+# The zero category is not the mildest rating but a structural zero: every one
+# of the 2,857 medication observations rated 0 has exactly no side effects and
+# none stopped because of side effects. Substantively it belongs at the bottom
+# of a severity scale, not below one star, which is the worst rating.
+#
+# Both problems are fixed by mapping the raw rating to severity: 0 stays 0 (no
+# side effects) and one to five stars are reversed, so the scale runs 0 = none
+# through 5 = worst. Effectiveness then falls monotonically across it, which it
+# does not do on the raw scale.
 se_rating <- sideeffect_rating %>%
   na_convert() %>%
   id_select(se_rating = sideeffects.rate_sideeffects_taking_antidepressants) %>%
-  dplyr::mutate(se_rating = factor(se_rating, ordered = TRUE))
+  dplyr::mutate(
+    se_rating = factor(ifelse(se_rating == 0, 0, 6 - se_rating), ordered = TRUE)
+  )
 
 # Number of medications
 prescription_antidepressants_id$prescription.a_different_antidepressants <- NULL
@@ -274,22 +294,10 @@ intolerance <- sideeffects_antidepressants_id %>%
   dplyr::mutate(intolerance = intolerance_count / n_meds) %>%
   id_select(intolerance)
 
-# Mean efficacy
-
-mean_eff <- antidepressants_eff_glad_med_id %>%
-  select(-contains("a_different_antidepressants")) %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  rowwise() %>%
-  dplyr::mutate(
-    total_eff =
-      sum(c_across(antidepressants_eff.antidepressants_work_doesdid.citalopram:
-      antidepressants_eff.antidepressants_work_doesdid.vortioxetine), na.rm = T)
-  ) %>%
-  ungroup() %>%
-  left_join(n_meds, by = "ID") %>%
-  dplyr::mutate(mean_eff = total_eff / n_meds) %>%
-  id_select(mean_eff)
+# `mean_eff`, the effectiveness rating averaged over a participant's
+# antidepressants, was removed on 2026-08-06. The longitudinal models fit
+# effectiveness per medication, so nothing has modelled the average since; it
+# was still being derived and labelled but never entered a model.
 
 antidepressants_why_glad_med_id <- antidepressants_why_glad_med_id %>%
   select(-contains("a_different_antidepressants")) %>%
@@ -311,6 +319,21 @@ avg_start_age <- started_age[-1] %>%
   rowMeans(na.rm = T) %>%
   bind_cols(started_age["ID"], avg_start_age = .) %>%
   dplyr::mutate(avg_start_age = avg_start_age / 10)
+
+# Total duration on antidepressants, summed over a participant's medications.
+# Needed by the per-participant models, which report it as "Total duration on
+# antidepressants".
+time <- antidepressants_why_glad_med_id %>%
+  id_select(contains("long_taking_takehave")) %>%
+  rowwise() %>%
+  dplyr::mutate(
+    time = sum(c_across(
+      antidepressants_why.long_taking_takehave.citalopram:
+      antidepressants_why.long_taking_takehave.vortioxetine
+    ), na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  id_select(time)
 
 # First improvement duration and occurrence of remission
 antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
@@ -660,10 +683,22 @@ ben_static <- antidepressants_ben_glad_med_id %>%
 
 n_best_static <- antidepressants_ben_glad_med_id %>%
   na_convert() %>%
+  # Drop participants who answered nothing in this questionnaire before summing.
+  # `rowSums(na.rm = TRUE)` returns 0 for an all-missing row, so without this a
+  # non-responder is silently recorded as having reported no best aspects; 546
+  # participants were affected and entered the model as genuine zeros. Removing
+  # all-NA rows keeps the distinction the outcome needs: someone who rated the
+  # benefits but selected no best aspects still has an answered row and a true
+  # zero, whereas someone who answered none of it becomes missing on the join.
+  na_row_remove() %>%
   dplyr::mutate(
     n_best = rowSums(dplyr::select(., starts_with("antidepressants_ben.") & where(is.numeric) & !contains("benefits_rate")), na.rm = TRUE)
   ) %>%
-  id_select(n_best)
+  id_select(n_best) %>%
+  # Ordered, not numeric: fit_model_non_glmm() dispatches on the outcome's type,
+  # so a numeric n_best is fitted as a hurdle model rather than the proportional
+  # odds model the Methods describe.
+  dplyr::mutate(n_best = factor(n_best, ordered = TRUE))
 
 # 6. Intolerance (Stopped due to SE)
 # ------------------------------------------------------------------------------
@@ -726,6 +761,38 @@ dat_long <- dat_long %>%
   )
 
 cache("dat_long")
+
+# Per-participant analysis frame
+# ------------------------------------------------------------------------------
+# Four outcomes -- the side effect severity rating, the benefit rating, the
+# number of best aspects and the improvement duration -- are single summary
+# responses per participant, so there is no within-participant variation for a
+# longitudinal model to use and they are fitted per participant instead.
+#
+# Building `dat` was dropped when the GLMM pipeline landed, but
+# src/02.regression.r still fits those four outcomes from it, so the pipeline had
+# been running off a stale `dat` left in cache/ by the pre-GLMM code. That cache
+# predated the cleaning corrections in 77b2466 and, once the side effect severity
+# rating was recoded above, would have silently kept the old coding. It is
+# rebuilt here from the same components as `dat_long`.
+dat <- reduce(
+  c(list(n_meds), static_dat_list, list(mean_n_se, intolerance, time, first_imprv)),
+  left_join,
+  by = "ID"
+) %>%
+  filter(
+    Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder == "No"
+  ) %>%
+  select(-Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder) %>%
+  mutate_if(is.factor, droplevels) %>%
+  # `intolerance` is the proportion of a participant's antidepressants stopped
+  # because of side effects, and enters the models as an ordered three-level
+  # variable, as it did before.
+  dplyr::mutate(
+    intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = TRUE)
+  )
+
+cache("dat")
 
 # Labels
 # ------------------------------------------------------------------------------

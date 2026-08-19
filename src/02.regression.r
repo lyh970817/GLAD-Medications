@@ -41,7 +41,6 @@ label_or_name <- function(vars) {
 labels_extra <- c(
   mean_n_se = "Mean number of side effects",
   intolerance = "Treatment discontinuation",
-  mean_eff = "Average effectiveness",
   first_imprv = "First improvement duration",
   time = "Total duration on antidepressants"
 )

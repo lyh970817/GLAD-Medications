@@ -11,7 +11,6 @@ reload.project()
 labels_extra <- c(
   mean_n_se = "Mean number of side effects",
   intolerance = "Treatment discontinuation",
-  mean_eff = "Average effectiveness",
   first_imprv = "First improvement duration",
   time = "Total duration on antidepressants",
   # Medication-episode analogues of `avg_start_age` and `time`. Only the GLMM
