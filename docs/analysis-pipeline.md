@@ -31,7 +31,7 @@ GLMM (`glmm_deps`), four outcomes:
 | Outcome | Family | Note |
 |---|---|---|
 | `effectiveness` | ordinal `clmm` | 3 observed levels; the only true ordinal fit |
-| `remission` | binomial `glmer` | ordered-coded but only 2 observed levels, so `fit_glmm()`'s binary branch catches it before the ordinal branch — see "Open questions" |
+| `remission` | binomial `glmer` | genuinely binary; `munge/01.dat_clean.r` wraps it in `factor(..., ordered = TRUE)`, but that is a no-op on a 2-level factor |
 | `n_se` | Poisson `glmer` | count of side-effect checklist items; effect is a rate ratio |
 | `stopped_due_to_se` | binomial `glmer` | |
 
@@ -163,9 +163,6 @@ significant. Deliberate zoom, but worth knowing before reading a figure.
 
 These are unresolved analysis decisions, not defects.
 
-- **`remission` model family.** It is ordered-coded but has only two observed
-  levels, so it silently routes to binomial `glmer` rather than `clmm`. Nobody
-  has decided whether that is intended.
 - **Cross-outcome predictor asymmetry.** `n_se`, `se_rating`, and
   `stopped_due_to_se` are predictors for `effectiveness` and `remission` but
   not vice versa. Because every predictor is fitted in its own model, this is a

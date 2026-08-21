@@ -13,16 +13,28 @@ labels_extra <- c(
   intolerance = "Treatment discontinuation",
   mean_eff = "Average effectiveness",
   first_imprv = "First improvement duration",
-  time = "Total duration on antidepressants"
+  time = "Total duration on antidepressants",
+  # Medication-episode analogues of `avg_start_age` and `time`. Only the GLMM
+  # has these; without them the GLMM grouped panels silently drop both, the
+  # same way the legacy panels used to drop mean_n_se and intolerance.
+  start_age = "Start Age",
+  cumulative_med_count = "Cumulative Medication Count"
 )
 labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 
+# Bonferroni factor used by the result workbooks: the legacy workbooks correct
+# across c(sef_models, eff_models) and the GLMM workbooks across glmm_models,
+# which is four outcomes in both cases. Every plot below is corrected by the
+# same factor so that figures and tables agree on what is significant.
+N_DEPS_NONLONG <- length(sef_models) + length(eff_models)
+N_DEPS_GLMM <- length(glmm_models)
+
 plot_sef <- plot_models_publication(
-  multi_adjust(sef_models)
+  multi_adjust(sef_models, n_deps = N_DEPS_NONLONG)
 )
 
 plot_eff <- plot_models_publication(
-  multi_adjust(eff_models)
+  multi_adjust(eff_models, n_deps = N_DEPS_NONLONG)
 )
 
 cache("plot_sef")
@@ -40,7 +52,7 @@ ggsave(
 
 # Plot sef_models_compete
 plot_sef_compete <- plot_models_publication(
-  multi_adjust(sef_models_compete)
+  multi_adjust(sef_models_compete, n_deps = N_DEPS_NONLONG)
 )
 
 # Save sef_compete plot
@@ -52,7 +64,7 @@ ggsave(
 
 # Plot eff_models_compete
 plot_eff_compete <- plot_models_publication(
-  multi_adjust(eff_models_compete)
+  multi_adjust(eff_models_compete, n_deps = N_DEPS_NONLONG)
 )
 
 # Save eff_compete plot
@@ -66,11 +78,15 @@ ggsave(
 predictor_groups_list <- list(
   "Demographics_Lifestyle" = c(
     "sex",
+    # Legacy per-participant summaries and their GLMM medication-episode
+    # analogues. Each pipeline contributes only the pair it actually fitted.
     "avg_start_age",
+    "time",
+    "start_age",
+    "cumulative_med_count",
     "bmi",
     "audit",
     "pack_year",
-    "time",
     "Not_in_relationship_In_relationship",
     "Not_in_relationship_Married",
     "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
@@ -114,9 +130,11 @@ predictor_groups_list <- list(
   )
 )
 
-save_grouped_plots <- function(models, prefix) {
-  # Adjust models (p-values) first
-  models_adj <- multi_adjust(models)
+save_grouped_plots <- function(models, prefix, n_deps = length(models)) {
+  # Adjust models (p-values) first. `n_deps` must be the size of the full
+  # outcome set the corresponding workbook corrects over, not the size of this
+  # subset — see multi_adjust().
+  models_adj <- multi_adjust(models, n_deps = n_deps)
 
   imap(predictor_groups_list, function(var_names, group_name) {
     # 1. Get target labels
@@ -189,10 +207,10 @@ save_grouped_plots <- function(models, prefix) {
 }
 
 # Generate grouped plots
-save_grouped_plots(sef_models, "sef")
-save_grouped_plots(eff_models, "eff")
-save_grouped_plots(sef_models_compete, "sef_compete")
-save_grouped_plots(eff_models_compete, "eff_compete")
+save_grouped_plots(sef_models, "sef", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(eff_models, "eff", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(sef_models_compete, "sef_compete", n_deps = N_DEPS_NONLONG)
+save_grouped_plots(eff_models_compete, "eff_compete", n_deps = N_DEPS_NONLONG)
 
 # ==============================================================================
 # GLMM PLOTS
@@ -205,11 +223,11 @@ save_grouped_plots(eff_models_compete, "eff_compete")
 # 1. Main Plots (Forest plots for all predictors)
 # ------------------------------------------------------------------------------
 plot_glmm <- plot_models_publication(
-  multi_adjust(glmm_models)
+  multi_adjust(glmm_models, n_deps = N_DEPS_GLMM)
 )
 
 plot_glmm_cov <- plot_models_publication(
-  multi_adjust(glmm_models_cov)
+  multi_adjust(glmm_models_cov, n_deps = N_DEPS_GLMM)
 )
 
 ggsave(
@@ -241,37 +259,37 @@ glmm_models_cov_eff <- glmm_models_cov[labels[glmm_eff_deps]]
 glmm_models_cov_sef <- glmm_models_cov[labels[glmm_sef_deps]]
 
 # Save grouped plots
-save_grouped_plots(glmm_models_eff, "glmm_eff")
-save_grouped_plots(glmm_models_sef, "glmm_sef")
-save_grouped_plots(glmm_models_cov_eff, "glmm_eff_cov")
-save_grouped_plots(glmm_models_cov_sef, "glmm_sef_cov")
+save_grouped_plots(glmm_models_eff, "glmm_eff", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_sef, "glmm_sef", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_cov_eff, "glmm_eff_cov", n_deps = N_DEPS_GLMM)
+save_grouped_plots(glmm_models_cov_sef, "glmm_sef_cov", n_deps = N_DEPS_GLMM)
 
 # 3. Combined plots for outcome groups (Requested in plan)
 # ------------------------------------------------------------------------------
 
 # Unadjusted Effectiveness
-plot_glmm_eff <- plot_models_publication(multi_adjust(glmm_models_eff))
+plot_glmm_eff <- plot_models_publication(multi_adjust(glmm_models_eff, n_deps = N_DEPS_GLMM))
 ggsave(
   filename = "./graphs/glmm_eff.png", plot = plot_glmm_eff,
   height = 30, width = 15, limitsize = FALSE
 )
 
 # Unadjusted Side Effects
-plot_glmm_sef <- plot_models_publication(multi_adjust(glmm_models_sef))
+plot_glmm_sef <- plot_models_publication(multi_adjust(glmm_models_sef, n_deps = N_DEPS_GLMM))
 ggsave(
   filename = "./graphs/glmm_sef.png", plot = plot_glmm_sef,
   height = 30, width = 15, limitsize = FALSE
 )
 
 # Adjusted Effectiveness (Compete)
-plot_glmm_eff_cov <- plot_models_publication(multi_adjust(glmm_models_cov_eff))
+plot_glmm_eff_cov <- plot_models_publication(multi_adjust(glmm_models_cov_eff, n_deps = N_DEPS_GLMM))
 ggsave(
   filename = "./graphs/glmm_eff_compete.png", plot = plot_glmm_eff_cov,
   height = 30, width = 15, limitsize = FALSE
 )
 
 # Adjusted Side Effects (Compete)
-plot_glmm_sef_cov <- plot_models_publication(multi_adjust(glmm_models_cov_sef))
+plot_glmm_sef_cov <- plot_models_publication(multi_adjust(glmm_models_cov_sef, n_deps = N_DEPS_GLMM))
 ggsave(
   filename = "./graphs/glmm_sef_compete.png", plot = plot_glmm_sef_cov,
   height = 30, width = 15, limitsize = FALSE
