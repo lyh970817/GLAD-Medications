@@ -59,7 +59,7 @@ predictor_groups_list <- list(
     "In_paid_employment_or_self_employed_Unemployed"
   ),
   "Psychiatric_History" = c(
-    "n_relatives",
+    "fh_diagnosis_types",
     "eating_disorders_numeric",
     "mhd_addadhd_numeric",
     "obsessive_compulsive_disorders_numeric",

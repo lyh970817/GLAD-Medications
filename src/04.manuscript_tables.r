@@ -261,7 +261,8 @@ md <- c(
   "significant. Rows shown only in parentheses are significant after adjustment",
   "but not before. The longitudinal models are adjusted for sex, starting age,",
   "cumulative medication count and PHQ-9; the per-participant models for sex,",
-  "average starting age and number of relatives with a psychiatric disorder.",
+  "average starting age and the number of psychiatric diagnosis types in the",
+  "immediate family.",
   ""
 )
 

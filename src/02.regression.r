@@ -114,18 +114,19 @@ glmm_deps <- c(
   "stopped_due_to_se"   # Binary
 )
 
-# Checked 2026-08-05: remission is binary. The raw item
-# antidepressants_imprv.condition_period_time_experience only ever takes 0, 1
-# and -777 (missing), and dat_long$remission has exactly two levels, both
-# observed (0: 9812, 1: 7645). The factor(ordered = TRUE) applied in
-# munge/01.dat_clean.r is therefore a no-op, and fit_glmm()'s binary branch
-# routing this to binomial glmer is correct, not a fallback.
+# Remission is binary (ruling A4, defined in munge/01.dat_clean.r): 1 = the
+# drug worked moderately or very well and no further symptoms followed, 0 =
+# further symptoms or the drug did not work at all. It is a two-level ordered
+# factor, which fit_glmm()'s binary branch routes to binomial glmer.
 
 # Base covariates for adjustment (competing independents)
 #
-# n_relatives (number of relatives with a psychiatric disorder) was dropped from
-# the adjustment set on 2026-08-05 and is now reported only as a focal predictor,
-# plus a sensitivity analysis. Three reasons:
+# Family history is not in the main adjustment set; it is reported as a focal
+# predictor and added back in a sensitivity analysis. Since the move to the
+# ilovedata extracts it is `fh_diagnosis_types`, the number of diagnosis types
+# with an affected immediate relative (ruling 2026-11-06), replacing
+# `n_relatives`, the sum of typed relative counts. The reasons below, and their
+# figures, are those for `n_relatives` when it was dropped on 2026-08-05:
 #
 #  1. It is missing for 40.8% of participants (10,489 of 25,453 medication
 #     observations), and because the models are complete-case, including it cut
@@ -151,40 +152,21 @@ compete_indeps <- c(
 )
 
 # Sensitivity adjustment set: the original one, adding family history back.
-sens_compete_indeps <- c(compete_indeps, "n_relatives")
+sens_compete_indeps <- c(compete_indeps, "fh_diagnosis_types")
 
 # Define Independent Variable Sets
 # ------------------------------------------------------------------------------
 # Same structure as before, but applied to longitudinal data
 
-# Filter illnesses with enough cases (using dat_long, calculating unique IDs)
-illnesses_case10 <- imap(dat_long[illnesses], function(x, name) {
-    # Count unique IDs with the illness (assuming illness is static per ID)
-    # x is the column in dat_long.
-    # Since illness is static, we can just check if any value is 1 for an ID?
-    # Actually, the illness columns are factors or numeric 0/1.
-    # Let's assume numeric 0/1 or Factor 0/1.
-
-    # Get unique values per ID (should be constant)
-    # But easier: just table(x) / average_meds_per_person approximation
-    # OR rigorous: distinct(dat_long, ID, .keep_all=T)
-
-    unique_vals <- dat_long %>%
-        select(ID, !!name) %>%
-        distinct() %>%
-        pull(!!name)
-
-    if (table(unique_vals)[2] >= 10) { # Assuming 0/1 and we want count of 1s
-        return(name)
-    }
-}) %>% unlist()
+# The individual illness ticks are no longer in the analysis frames; the six
+# illness group counts below replace them (rulings `ill_*`).
 
 indeps_list_base <-
   c(
     list(
       c("sex"),
       c("start_age"),
-      c("n_relatives"),
+      c("fh_diagnosis_types"),
       c("cumulative_med_count"), # Added as single predictor
       c("bmi"),
       c("audit"),
@@ -227,7 +209,6 @@ indeps_list_base <-
       # "time" removed as it's likely collinear with cumulative count or age
     ),
     names(lab_grouped_illnesses)
-    # illnesses_case10 # Optionally include individual illnesses
   )
 
 # Cross-outcome predictors to include only for effectiveness/remission models
@@ -248,7 +229,7 @@ get_adjusted_indeps_list_for_dep <- function(dep, competing = compete_indeps) {
   dep_indeps <- get_indeps_list_for_dep(dep)
 
   # In adjusted models, the competing set are covariates only (not focal
-  # predictors). n_relatives is no longer in the main competing set, so it stays
+  # predictors). Family history is not in the main competing set, so it stays
   # a focal predictor here and is reported adjusted for the others.
   discard(dep_indeps, ~ length(.x) == 1 && .x %in% competing)
 }
@@ -509,14 +490,14 @@ fit_all_non_glmm <- function(deps, indeps_list, covs = NULL, data) {
 nonlong_compete_indeps <- c(
   "sex",
   "avg_start_age",
-  "n_relatives"
+  "fh_diagnosis_types"
 )
 
 nonlong_indeps_base <- c(
   list(
     c("sex"),
     c("avg_start_age"),
-    c("n_relatives"),
+    c("fh_diagnosis_types"),
     c("bmi"),
     c("audit"),
     c("pack_year"),

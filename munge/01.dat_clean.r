@@ -1,614 +1,172 @@
-require(fastDummies)
+# Builds the two analysis frames from the ilovedata extracts.
+#
+#   dat_long  one row per participant x antidepressant taken (GLMM outcomes)
+#   dat       one row per participant who took an antidepressant (legacy
+#             per-participant outcomes)
+#
+# Inputs, written to data/ by extract/ilovedata_export.R and auto-loaded by
+# ProjectTemplate: `ilovedata_person` (one row per person) and
+# `ilovedata_person_drug` (one row per person x antidepressant). Item columns
+# carry their Response Status as legacy codes; see lib/01.munge_helpers.r.
+#
+# Two cohorts go through one path: Baseline (GLAD sign-up `glad`, the
+# standalone medication survey `glad_med` and the Family History survey
+# `glad_fh`, joined on person_id) and SA8 (`glad_sa8_signup`). Definitions
+# follow the rulings in docs/sa8-migration-plan.md, sections C and D; each is
+# cited where it is applied. Survey cohort is kept as `cohort` for descriptive
+# tables but is not a model term (ruling `wave` = c).
 
-# Sex
-sex_med <- sex_gender_sexuality_glad_clean %>%
-  id_select(sex = dem.sex)
-
-# Age
-age_med <- age_glad_clean %>%
-  dplyr::mutate(age = dem.dob_age / 10) %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(age)
-
-# BMI
-# No startDate in the file?
-signup_bmi_height_weight_med <- signup_bmi_height_weight_glad_clean %>%
-  na_convert() %>%
-  id_select(bmi = dem.bmi_signup)
-
-# Education
-years_of_education_med <- years_of_education_glad_clean %>%
-  na_convert() %>%
-  # Missing 'startDate' and 'endDate'
-  id_select(education_yrs = `dem.years_schoolplease_include_preschool.txt`)
-
-# Employment
-employment_glad_clean$dem.what_is_your_current_employment_status <-
-  employment_glad_clean$dem.what_is_your_current_employment_status %>%
-  factor()
-
-employment_med <- employment_glad_clean %>%
-  na_convert() %>%
-  # Missing 'startDate' and 'endDate'
-  id_select(
-    "In_paid_employment_or_self-employed" =
-      dem.what_is_your_current_employment_status
-  ) %>%
-  dummy_cols(
-    select_columns = "In_paid_employment_or_self-employed",
-    remove_most_frequent_dummy = TRUE
-  ) %>%
-  mutate_at(
-    vars(contains("In_paid_employment_or_self-employed")),
-    factor,
-    levels = c(0, 1), labels = c("No", "Yes")
-  ) %>%
-  select(-"In_paid_employment_or_self-employed")
-
-colnames(employment_med) <- gsub(" ", "_", colnames(employment_med))
-# Hyphen will be confused with minus sign in R formulae
-colnames(employment_med) <- gsub("-", "_", colnames(employment_med))
-colnames(employment_med) <- gsub("/", "_", colnames(employment_med))
-
-# Remove "None of the above" employment category from analysis
-employment_med <- employment_med %>%
-  select(-any_of("In_paid_employment_or_self_employed_None_of_the_above"))
-
-# Marital status
-recode_norelationship <-
-  c(
-    "Single",
-    "Divorced",
-    "Widowed",
-    "Separated"
-  ) %>%
-  setNames(rep("Not in relationship", length(.)))
-
-
-recode_married <-
-  c(
-    "Married",
-    "Married/civil partnership"
-  ) %>%
-  setNames(rep("Married", length(.)))
-
-
-recode_inrelationship <-
-  c(
-    # Qualtrics error
-    "Relationship (living together)",
-    "Relationship (not living together)"
-    # Combine with the above
-    # "Steady living together",
-    # "Steady not living together"
-  ) %>%
-  setNames(rep("In relationship", length(.)))
-
-marital_status_glad_clean$dem.what_is_your_current_maritalrelationship_status <-
-  marital_status_glad_clean$dem.what_is_your_current_maritalrelationship_status %>%
-  fct_recode(!!!recode_married) %>%
-  fct_recode(!!!recode_norelationship) %>%
-  fct_recode(!!!recode_inrelationship) %>%
-  fct_recode(NULL = "Other") %>%
-  factor()
-
-marital_status_med <- marital_status_glad_clean %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(Not_in_relationship = dem.what_is_your_current_maritalrelationship_status) %>%
-  dummy_cols(
-    select_columns = "Not_in_relationship",
-    remove_most_frequent_dummy = TRUE
-  ) %>%
-  select(-"Not_in_relationship")
-colnames(marital_status_med) <- gsub(" ", "_", colnames(marital_status_med))
-
-# MHD
-mhd_med <- mhd_glad_clean_tmp %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(
-    "Depressive_and_anxiety_disorder" = depression_and_anxiety,
-    "No_psychotic_or_bipolar_disorder" = bipolar_and_schizophrenia,
-    eating_disorders_numeric,
-    # Suggest a change in uniform names (dot/slash) in ilovedata?
-    mhd_addadhd_numeric = mhd.addadhd_numeric,
-    obsessive_compulsive_disorders_numeric,
-    mhd_personality_disorder_numeric = mhd.personality_disorder_numeric,
-    autism_spectrum_disorder_numeric,
-    comorbidity_total_count_numeric
-  ) %>%
-  dummy_cols(
-    select_columns = "Depressive_and_anxiety_disorder",
-    remove_most_frequent_dummy = TRUE
-  ) %>%
-  mutate_at(
-    vars(contains("Depressive_and_anxiety_disorder")),
-    factor,
-    levels = c(0, 1), labels = c("No", "Yes")
-  ) %>%
-  select(-Depressive_and_anxiety_disorder) %>%
-  dummy_cols(
-    select_columns = "No_psychotic_or_bipolar_disorder",
-    remove_most_frequent_dummy = TRUE
-  ) %>%
-  mutate_at(vars(contains("No_psychotic_or_bipolar_disorder")),
-    factor,
-    levels = c(0, 1), labels = c("No", "Yes")
-  ) %>%
-  select(-No_psychotic_or_bipolar_disorder)
-colnames(mhd_med) <- gsub(" ", "_", colnames(mhd_med))
-
-# AUDIT
-audit_med <- audit_glad_clean %>%
-  id_select(audit = audit.sum_score)
-
-# CIDID recurrence
-cidid_recurrence_med <- cidid_recurrence_glad_clean %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(cidid_recurrence = cidid.number_of_episodes_numeric)
-
-# CIDIA recurrence
-# Wrong!!! Too many NAs
-cidia_recurrence_med <- cidia_cleaning_algorithm_glad_clean %>%
-  id_select(cidia_recurrence = cidia.number_of_episodes)
-
-# GAD7
-gad7_med <- gad7_glad_clean %>%
-  id_select(gad7 = gad7.sum_score)
-
-# PHQ9
-phq9_med <- phq9_glad_clean %>%
-  id_select(
-    phq9 = phq9.sum_score
-    # phq9_bin = phq9.binary_depression_numeric
+if (!exists("ilovedata_person") || !exists("ilovedata_person_drug")) {
+  stop(
+    "data/ilovedata_person.rds and data/ilovedata_person_drug.rds are missing. ",
+    "Run extract/ilovedata_export.R (see docs/analysis-pipeline.md)."
   )
-
-# WSAS
-wsas_med <- wsas_glad_clean %>%
-  id_select(wsas = wsas.sum_score)
-
-# Number of relatives with psychiatric disorder
-# Needs updating ilovedata script
-
-n_relatives <- fh_mhd_f_glad_dat %>%
-  full_join(fh_mhd2_f_glad_dat, by = c("externalDataReference", "startDate", "endDate")) %>%
-  select(ID = externalDataReference, everything()) %>%
-  dplyr::mutate(sample = "glad") %>%
-  dplyr::mutate(across(starts_with("fh_"), str_extract, "\\d*")) %>%
-  dplyr::mutate(across(starts_with("fh_"), as.numeric)) %>%
-  # All to positive
-  dplyr::mutate(across(starts_with("fh_"), abs)) %>%
-  na_convert() %>%
-  rowwise() %>%
-  dplyr::mutate(n_relatives = sum(c_across(starts_with("fh_")), na.rm = T)) %>%
-  ungroup() %>%
-  id_select(n_relatives) %>%
-  group_by(ID) %>%
-  dplyr::summarise(n_relatives = max(n_relatives, na.rm = TRUE), .groups = "drop")
-
-# Smoking
-smoking_pack_year <- smoking_pack_year_glad %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(pack_year = dem.pack_year)
-
-# Number of benefits
-n_best <-
-  antidepressants_ben_glad_med_id %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  rowwise() %>%
-  dplyr::mutate(
-    n_best =
-      sum(c_across(
-        antidepressants_ben.relief_of_depressive_symptoms:
-        antidepressants_ben.other
-      ), na.rm = T)
-  ) %>%
-  ungroup() %>%
-  id_select(n_best) %>%
-  dplyr::mutate(n_best = factor(n_best, ordered = TRUE))
-
-# Overall benefit rating
-ben_rating <- antidepressants_ben_glad_med_id %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(ben_rating = antidepressants_ben.benefits_rate_taking_antidepressantss) %>%
-  dplyr::mutate(ben_rating = factor(ben_rating, ordered = TRUE))
-
-# Overall side effect rating.
-#
-# The raw item is a star rating -- "Overall, how would you rate the side-effects
-# of taking antidepressants?" -- on which MORE stars means a BETTER rating, i.e.
-# milder side effects. Used raw it therefore runs opposite to its name. Two
-# independent items confirm the orientation: among respondents who had side
-# effects the mean number of side effects falls monotonically from 5.5 at one
-# star to 2.9 at five, and the proportion who stopped a medication because of
-# side effects falls from 0.63 to 0.33.
-#
-# The zero category is not the mildest rating but a structural zero: every one
-# of the 2,857 medication observations rated 0 has exactly no side effects and
-# none stopped because of side effects. Substantively it belongs at the bottom
-# of a severity scale, not below one star, which is the worst rating.
-#
-# Both problems are fixed by mapping the raw rating to severity: 0 stays 0 (no
-# side effects) and one to five stars are reversed, so the scale runs 0 = none
-# through 5 = worst. Effectiveness then falls monotonically across it, which it
-# does not do on the raw scale.
-se_rating <- sideeffect_rating %>%
-  na_convert() %>%
-  id_select(se_rating = sideeffects.rate_sideeffects_taking_antidepressants) %>%
-  dplyr::mutate(
-    se_rating = factor(ifelse(se_rating == 0, 0, 6 - se_rating), ordered = TRUE)
-  )
-
-# Number of medications
-prescription_antidepressants_id$prescription.a_different_antidepressants <- NULL
-
-n_meds <- prescription_antidepressants_id %>%
-  na_convert() %>%
-  rowwise() %>%
-  dplyr::mutate(n_meds = sum(c_across(prescription.citalopram:prescription.vortioxetine), na.rm = TRUE)) %>%
-  id_select(n_meds) %>%
-  ungroup()
-
-# Mean number of side effects
-sideeffects_antidepressants_id <- sideeffects_antidepressants_id %>%
-  select(-contains("a_different_antidepressants"))
-
-mean_n_se <- sideeffects_antidepressants_id %>%
-  select(-contains("side_effects_stop_taking")) %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  rowwise() %>%
-  dplyr::mutate(
-    n_se =
-      sum(c_across(
-        sideeffects.dry_mouth.citalopram:sideeffects.other.vortioxetine
-      ), na.rm = T)
-  ) %>%
-  id_select(n_se) %>%
-  left_join(n_meds, by = "ID") %>%
-  dplyr::mutate(mean_n_se = n_se / n_meds) %>%
-  id_select(mean_n_se) %>%
-  ungroup()
-
-# Likelihood of intolerance
-intolerance <- sideeffects_antidepressants_id %>%
-  id_select(sample, startDate, endDate, contains("side_effects_stop_taking")) %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  rowwise() %>%
-  dplyr::mutate(
-    intolerance_count =
-      sum(c_across(
-        sideeffects.side_effects_stop_taking.citalopram:
-        sideeffects.side_effects_stop_taking.vortioxetine
-      ), na.rm = T)
-  ) %>%
-  ungroup() %>%
-  left_join(n_meds, by = "ID") %>%
-  dplyr::mutate(intolerance = intolerance_count / n_meds) %>%
-  id_select(intolerance)
-
-# `mean_eff`, the effectiveness rating averaged over a participant's
-# antidepressants, was removed on 2026-08-06. The longitudinal models fit
-# effectiveness per medication, so nothing has modelled the average since; it
-# was still being derived and labelled but never entered a model.
-
-antidepressants_why_glad_med_id <- antidepressants_why_glad_med_id %>%
-  select(-contains("a_different_antidepressants")) %>%
-  # Assign to Molly - none shouldn't be here
-  select(-contains("none")) %>%
-  na_convert() %>%
-  na_row_remove()
-
-# Age when starting to take antidepressants
-started_age <- antidepressants_why_glad_med_id %>%
-  id_select(contains("started_taking")) %>%
-  mutate_at(vars(contains("started_taking")), function(x) {
-    x[x < 5 | x > 100] <- NA
-    x
-  })
-
-# Average starting age
-avg_start_age <- started_age[-1] %>%
-  rowMeans(na.rm = T) %>%
-  bind_cols(started_age["ID"], avg_start_age = .) %>%
-  dplyr::mutate(avg_start_age = avg_start_age / 10)
-
-# Total duration on antidepressants, summed over a participant's medications.
-# Needed by the per-participant models, which report it as "Total duration on
-# antidepressants".
-time <- antidepressants_why_glad_med_id %>%
-  id_select(contains("long_taking_takehave")) %>%
-  rowwise() %>%
-  dplyr::mutate(
-    time = sum(c_across(
-      antidepressants_why.long_taking_takehave.citalopram:
-      antidepressants_why.long_taking_takehave.vortioxetine
-    ), na.rm = TRUE)
-  ) %>%
-  ungroup() %>%
-  id_select(time)
-
-# First improvement duration and occurrence of remission
-antidepressants_imprv_glad_med_id <- antidepressants_imprv_glad_med_id %>%
-  na_convert() %>%
-  na_row_remove()
-
-
-# First improvement duration
-started_age_t <- started_age %>%
-  left_join(antidepressants_imprv_glad_med_id["ID"], ., by = "ID") %>%
-  select(-ID) %>%
-  purrr::transpose()
-
-imprv_t <- antidepressants_imprv_glad_med_id %>%
-  select(contains("experienced_improvement_symptoms_long")) %>%
-  purrr::transpose()
-
-first_imprv <- map2_dbl(
-  started_age_t, imprv_t,
-  function(age, imprv) {
-    imprv <- unlist(imprv)
-    age <- unlist(age)
-    imprv_by_age <- imprv[order(age)]
-
-    # First non-NA value
-    imprv_by_age[!is.na(imprv_by_age)][1]
-  }
-) %>%
-  tibble(antidepressants_imprv_glad_med_id["ID"], first_imprv = .) %>%
-  dplyr::mutate(first_imprv = factor(first_imprv, ordered = TRUE))
-
-# Disabilities and illnesses
-disability_illness_bin <- disability_illness_glad_clean[
-  c("ID", "sample", "startDate", "endDate", "dem.disability_numeric")
-] %>%
-  na_convert() %>%
-  na_row_remove()
-
-illnesses <- c(
-  # "dem.metal_implants_numeric",
-  "dem.epilepsy_or_convulsions_numeric",
-  "dem.migraines_numeric",
-  "dem.multiple_sclerosis_numeric",
-  # Rank deficient
-  "dem.parkinsons_disease_numeric",
-  "dem.severe_memory_loss_numeric",
-  # "dem.neurological_none_numeric", "dem.neurological_dont_know_numeric",
-  # "dem.neurological_prefer_not_to_answer_numeric",
-  "dem.hay_fever_numeric",
-  "dem.drug_allergy_numeric", "dem.food_allergy_numeric",
-  "dem.other_allergy_numeric", "dem.osteoporosis_numeric",
-  "dem.osteoarthritis_numeric", "dem.rheumatoid_arthritis_numeric",
-  "dem.other_arthritis_numeric",
-  # "dem.allergy_none_numeric",
-  "dem.asthma_numeric", "dem.emphysema_or_chronic_bronchitis_numeric",
-  "dem.heart_attack_or_angina_numeric", "dem.high_blood_cholesterol_numeric",
-  "dem.high_blood_pressure_numeric", "dem.atrial_fibrillation_numeric",
-  "dem.stroke_numeric",
-  "dem.crohns_disease_numeric", "dem.ulcerative_colitis_numeric",
-  "dem.coeliac_disease_numeric", "dem.diabetes_type_1_numeric",
-  "dem.diabetes_type_2_numeric",
-  # "dem.pain_due_to_diabetes_numeric",
-  "dem.pain_due_to_virus_numeric",
-  "dem.breast_cancer_numeric",
-  # Rank deficient
-  "dem.lung_cancer_numeric",
-  "dem.stomach_cancer_numeric",
-  "dem.colon_cancer_numeric",
-  "dem.uterus_cancer_numeric",
-  "dem.prostate_cancer_numeric",
-  "dem.psoriasis_numeric",
-  "dem.vitiligo_numeric", "dem.eczema_numeric",
-  "dem.thyroid_disease_numeric"
-  # "dem.listed_previously_told_illness_numeric"
-  # All NA
-  # "dem.brain_tumour_numeric",
-  # "dem.ankylosing_spondylitis_numeric", "dem.hypermobility_numeric",
-  # "dem.pots_numeric", "dem.diabetes_type_1_early_onset_numeric",
-  # "dem.diabetes_type_1_late_onset_numeric",
-  # "dem.diabetes_type_2_late_onset_numeric",
-  # "dem.pcos_numeric"
-)
-
-cache("illnesses")
-
-lab_illnesses <- c(
-  # "Metal implants",
-  "Epilepsy or convulsions",
-  "Migraines", "Multiple sclerosis",
-  # Rank deficient
-  "Parkinsons disease",
-  "Severe memory loss",
-  # "Neurological none", "Neurological dont know",
-  # "Neurological prefer not to answer",
-  "Hay fever",
-  "Drug allergy", "Food allergy",
-  "Other allergy", "Osteoporosis",
-  "Osteoarthritis", "Rheumatoid arthritis",
-  "Other arthritis",
-  # "Allergy none",
-  "Asthma", "Emphysema or chronic bronchitis",
-  "Heart attack or angina", "High blood cholesterol",
-  "High blood pressure", "Atrial fibrillation",
-  "Stroke",
-  "Crohns disease", "Ulcerative colitis",
-  "Coeliac disease", "Diabetes type 1",
-  "Diabetes type 2",
-  # "Pain due to diabetes",
-  "Pain due to virus",
-  "Breast cancer",
-  # Rank deficient
-  "Lung cancer",
-  "Stomach cancer",
-  "Colon cancer",
-  "Uterus cancer", "Prostate cancer",
-  "Psoriasis",
-  "Vitiligo", "Eczema",
-  "Thyroid disease"
-  # "Listed previously told illness"
-  # All NA
-  # "Brain tumour",
-  # "Ankylosing spondylitis", "Hypermobility",
-  # "Pots", "Diabetes type 1 early onset",
-  # "Diabetes type 1 late onset",
-  # "Diabetes type 2 late onset",
-  # "Pcos"
-)
-
-disability_illness_bin <- disability_illness_glad_clean[
-  c("ID", "sample", "startDate", "endDate", "dem.disability_numeric")
-] %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(disable_bin = dem.disability_numeric)
-
-disabilities_illnesses <- disability_illness_glad_clean[
-  c("ID", "sample", "startDate", "endDate", illnesses)
-] %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(illnesses)
-
-
-# 1. Define the Group Vectors
-# (Based on the filtered list from the previous step)
-
-group_cardiometabolic <- c(
-  "dem.heart_attack_or_angina_numeric",
-  "dem.high_blood_cholesterol_numeric",
-  "dem.high_blood_pressure_numeric",
-  "dem.atrial_fibrillation_numeric",
-  "dem.stroke_numeric",
-  "dem.diabetes_type_2_numeric",
-  "dem.thyroid_disease_numeric"
-)
-
-group_neurological <- c(
-  "dem.parkinsons_disease_numeric",
-  "dem.epilepsy_or_convulsions_numeric",
-  "dem.migraines_numeric",
-  "dem.multiple_sclerosis_numeric",
-  "dem.severe_memory_loss_numeric"
-)
-
-group_autoimmune <- c(
-  "dem.rheumatoid_arthritis_numeric",
-  "dem.crohns_disease_numeric",
-  "dem.ulcerative_colitis_numeric",
-  "dem.coeliac_disease_numeric",
-  "dem.diabetes_type_1_numeric",
-  "dem.psoriasis_numeric",
-  "dem.vitiligo_numeric",
-  "dem.eczema_numeric"
-)
-
-group_respiratory_atopic <- c(
-  "dem.hay_fever_numeric",
-  "dem.drug_allergy_numeric",
-  "dem.food_allergy_numeric",
-  "dem.other_allergy_numeric",
-  "dem.asthma_numeric",
-  "dem.emphysema_or_chronic_bronchitis_numeric" # Kept exact name from your list
-)
-
-group_oncology <- c(
-  "dem.breast_cancer_numeric",
-  "dem.colon_cancer_numeric",
-  "dem.uterus_cancer_numeric",
-  "dem.lung_cancer_numeric",
-  "dem.stomach_cancer_numeric",
-  "dem.prostate_cancer_numeric"
-)
-
-group_musculoskeletal_pain <- c(
-  "dem.osteoporosis_numeric",
-  "dem.osteoarthritis_numeric",
-  "dem.other_arthritis_numeric",
-  "dem.pain_due_to_virus_numeric"
-)
-
-# 2. Create the dataframe with Sum Scores
-
-grouped_illnesses <- disability_illness_glad_clean[
-  c("ID", "sample", "startDate", "endDate", illnesses)
-] %>%
-  na_convert() %>%
-  na_row_remove() %>%
-  id_select(illnesses) %>%
-  dplyr::mutate(
-    # Calculate row-wise sums for each group
-    score_cardiometabolic = rowSums(across(all_of(group_cardiometabolic)), na.rm = TRUE),
-    score_neurological    = rowSums(across(all_of(group_neurological)), na.rm = TRUE),
-    score_autoimmune      = rowSums(across(all_of(group_autoimmune)), na.rm = TRUE),
-    score_respiratory     = rowSums(across(all_of(group_respiratory_atopic)), na.rm = TRUE),
-    score_oncology        = rowSums(across(all_of(group_oncology)), na.rm = TRUE),
-    score_musculoskeletal = rowSums(across(all_of(group_musculoskeletal_pain)), na.rm = TRUE)
-  ) %>%
-  id_select(starts_with("score_"))
-
-cache("grouped_illnesses")
-
-lab_grouped_illnesses <- c(
-  score_cardiometabolic = "Cardiometabolic & endocrine Disorders",
-  score_neurological    = "Neurological conditions",
-  score_autoimmune      = "Autoimmune & inflammatory Diseases",
-  score_respiratory     = "Respiratory & atopic conditions",
-  score_oncology        = "Oncological disorders",
-  score_musculoskeletal = "Musculoskeletal & pain disorders"
-)
-
-cache("lab_grouped_illnesses")
-
-# ==============================================================================
-# LONGITUDINAL DATA MUNGING
-# ==============================================================================
-
-# Helper to pivot med columns to long format
-pivot_meds <- function(df, prefix, value_name) {
-  df %>%
-    select(-contains("a_different_antidepressant")) %>%
-    na_convert() %>%
-    pivot_longer(
-      cols = starts_with(prefix),
-      names_to = "medication",
-      values_to = value_name
-    ) %>%
-    dplyr::mutate(
-      medication = str_remove(medication, paste0(prefix, "\\."))
-    )
 }
 
-# 1. Start Age & Cumulative Count (Ordering)
-# ------------------------------------------------------------------------------
-# Medication-use long table (used across outcomes)
-med_use_long <- prescription_antidepressants_id %>%
-  na_convert() %>%
-  pivot_meds("prescription", "took_med") %>%
-  dplyr::mutate(took_med = coalesce(took_med, 0))
+person <- ilovedata_person
+person_drug <- ilovedata_person_drug
 
-taken_meds_long <- med_use_long %>%
-  filter(took_med == 1) %>%
-  select(ID, medication)
+if (!"se_recorded" %in% names(person_drug)) {
+  stop("data/ilovedata_person_drug.rds predates the `se_recorded` column; re-run extract/ilovedata_export.R.")
+}
 
-# We use start age to determine the order of medications.
-# For taken medications with missing start age, assign them to the same age as
-# the last valid medication age for that participant.
-start_age_long <- taken_meds_long %>%
-  left_join(
-    antidepressants_why_glad_med_id %>%
-      pivot_meds("antidepressants_why.started_taking", "start_age") %>%
-      mutate(medication = str_remove(medication, "^txt\\.")),
-    by = c("ID", "medication")
+if (any(person$cohort == "Baseline+SA8")) {
+  # No rule decides which cohort's answers such a person contributes, so refuse
+  # rather than choose silently.
+  stop(
+    sum(person$cohort == "Baseline+SA8"),
+    " people are in both the Baseline and the SA8 surveys; a rule is needed ",
+    "before they can enter the analysis."
+  )
+}
+
+# The 28 named antidepressants, in the order the extract writes them. "A
+# different antidepressant" is not one of them (ruling `drugs`).
+antidepressants <- unique(person_drug$drug)
+
+# ==============================================================================
+# WHO ENTERS
+# ==============================================================================
+# A participant is an antidepressant taker when they ticked at least one drug
+# on either antidepressant list, including the second list's "a different
+# antidepressant". Membership is decided by the ticks alone, not by the
+# any-side-effects question or the rating items: in SA8 the pipeline cannot
+# yet mark people who were never routed into the medication section as
+# `not_shown`, so "seen, not answered" on those items is not evidence that a
+# person was asked them.
+#
+# dat_long has one row per taken drug among the 28 named ones. dat has one row
+# per taker; a taker of only "a different antidepressant" is in dat with
+# n_meds = 0 and is absent from dat_long.
+taken <- person_drug %>%
+  filter(is_tick(took)) %>%
+  select(-took)
+
+takers <- person %>%
+  filter(
+    person_id %in% taken$person_id |
+      is_tick(prescription.a_different_antidepressant.1)
   ) %>%
-  dplyr::mutate(start_age_valid = ifelse(start_age < 5 | start_age > 100, NA, start_age)) %>%
-  group_by(ID) %>%
+  pull(person_id)
+
+# ==============================================================================
+# PER-MEDICATION OUTCOMES
+# ==============================================================================
+se_items <- setdiff(grep("^se_", names(person_drug), value = TRUE), "se_recorded")
+stopifnot(length(se_items) == 30)
+
+gate <- person %>%
+  transmute(
+    person_id,
+    # "Did you experience side effects from any medication(s) that you have
+    # taken?" 0 No / 1 Yes.
+    gate = answer_value(sideeffects.experience_side_effects_medication)
+  )
+
+med_long <- taken %>%
+  left_join(gate, by = "person_id") %>%
+  dplyr::mutate(
+    # Number of side effects (ruling A2; A3 as amended 2026-11-06, matching
+    # GLAD-Medications-SEM). Count the ticked boxes. With none ticked:
+    #   - No to having had side effects from any medication: 0 (the checklist
+    #     is not shown after No, so it is blank there).
+    #   - Yes, and the drug's checklist page was displayed and recorded: 0,
+    #     whether or not its "No side effects" box is ticked. Displayed and
+    #     recorded means the drug's checklist cells hold stored raw values
+    #     (`se_recorded` > 0: Qualtrics' 0 for an unticked box, or its -77 for
+    #     shown-but-blank). The sentinel codes cannot show this, since the
+    #     engine codes -77 and an empty cell alike as -777.
+    #   - Otherwise (the drug's cells are empty: page never reached or not
+    #     recorded), missing.
+    # The "No side effects" tick does not enter the count. No sensitivity
+    # analysis.
+    n_se_ticked = rowSums(across(all_of(se_items), is_tick)),
+    n_se = case_when(
+      n_se_ticked > 0 ~ n_se_ticked,
+      !is.na(gate) & gate == 0 ~ 0,
+      !is.na(gate) & gate == 1 & se_recorded > 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    # Stopped because of side effects, 0 No / 1 Yes, where answered. The item is
+    # shown for a drug only when a side effect was ticked for it (ruling
+    # stop_display). When it was not shown because the drug had no side
+    # effects -- n_se is a ruled true 0 (gate No, or a recorded checklist with
+    # nothing ticked) -- the drug was not stopped because of side effects: 0,
+    # as the previous analysis file had it for gate No and the "No side
+    # effects" tick. Seen and not answered, or not shown for any other reason,
+    # is missing.
+    stopped_due_to_se = case_when(
+      answered(stopped) ~ stopped,
+      is.na(stopped) & !is.na(n_se) & n_se == 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    # How well the drug worked: 0 not at all, 1 moderately, 2 very well.
+    # "Don't know" is missing.
+    effectiveness = answer_value(eff),
+    # SA8 asks the improvement questions on one of two pages per drug; take
+    # whichever was answered (ruling `imprv`). glad_med has one page ("a").
+    # Two different answers would need a rule; there are none on record, and
+    # such a row is left missing.
+    further_symptoms = case_when(
+      answered(further_a) & answered(further_b) & further_a != further_b ~ NA_real_,
+      answered(further_a) ~ further_a,
+      answered(further_b) ~ further_b,
+      TRUE ~ NA_real_
+    ),
+    improvement_duration = case_when(
+      answered(duration_a) & answered(duration_b) & duration_a != duration_b ~ NA_real_,
+      answered(duration_a) ~ duration_a,
+      answered(duration_b) ~ duration_b,
+      TRUE ~ NA_real_
+    ),
+    # Remission (ruling A4, option b): 1 when the drug worked moderately or
+    # very well and there were no further symptoms afterwards; 0 when there
+    # were further symptoms, or when the drug did not work at all (the
+    # follow-up is never shown then); missing when effectiveness is missing or
+    # "don't know", or when a responder left the further-symptoms item blank.
+    remission = case_when(
+      !is.na(further_symptoms) & further_symptoms == 1 ~ 0,
+      !is.na(effectiveness) & effectiveness == 0 ~ 0,
+      !is.na(effectiveness) & effectiveness %in% c(1, 2) &
+        !is.na(further_symptoms) & further_symptoms == 0 ~ 1,
+      TRUE ~ NA_real_
+    ),
+    start_age_raw = answer_value(start_age),
+    length_taken = answer_value(length)
+  ) %>%
+  select(
+    person_id, medication = drug, gate, n_se, stopped_due_to_se, effectiveness,
+    further_symptoms, improvement_duration, remission, start_age_raw, length_taken
+  )
+
+# Start age & cumulative medication count. Start age orders a participant's
+# medications. Ages outside 5-100 are invalid; a taken medication without a
+# valid start age is placed at the participant's last valid age.
+start_age_long <- med_long %>%
+  dplyr::mutate(
+    start_age_valid = ifelse(start_age_raw < 5 | start_age_raw > 100, NA, start_age_raw)
+  ) %>%
+  group_by(person_id) %>%
   dplyr::arrange(start_age_valid, medication, .by_group = TRUE) %>%
   dplyr::mutate(
     n_missing_start_age = sum(is.na(start_age_valid)),
@@ -627,268 +185,302 @@ start_age_long <- taken_meds_long %>%
     start_age = ifelse(is.na(start_age_valid) & n_valid_start_age > 0, last_start_age, start_age_valid)
   ) %>%
   ungroup() %>%
-  select(ID, medication, start_age, cumulative_med_count)
+  select(person_id, medication, start_age_valid, start_age, cumulative_med_count)
 
-# 2. Efficacy
-# ------------------------------------------------------------------------------
-eff_long <- antidepressants_eff_glad_med_id %>%
-  pivot_meds("antidepressants_eff.antidepressants_work_doesdid", "effectiveness")
+med_long <- med_long %>%
+  left_join(start_age_long, by = c("person_id", "medication"))
 
-# 3. Side Effects (Count and Specifics)
-# ------------------------------------------------------------------------------
-# Calculate n_se (count of side effects) per med
-se_long_raw <- sideeffects_antidepressants_id %>%
-  select(-contains("side_effects_stop_taking")) %>%
-  na_convert() %>%
-  pivot_longer(
-    cols = contains("sideeffects."),
-    names_to = c("variable", "medication"),
-    names_pattern = "sideeffects\\.(.*)\\.(.*)",
-    values_to = "value"
-  )
-
-se_long <- se_long_raw %>%
-  # Pivot wider to get columns for each side effect type
-  pivot_wider(
-    names_from = variable,
-    values_from = value
+# ==============================================================================
+# PER-PARTICIPANT VARIABLES
+# ==============================================================================
+# Medication summaries over a participant's taken drugs.
+med_person <- tibble(person_id = takers) %>%
+  left_join(
+    med_long %>%
+      group_by(person_id) %>%
+      dplyr::summarise(
+        n_meds = n(),
+        # Mean number of side effects over the drugs whose count is known; a
+        # missing count is left out of the mean (ruling A2).
+        mean_n_se = if (any(!is.na(n_se))) mean(n_se, na.rm = TRUE) else NA_real_,
+        # Proportion of the participant's antidepressants stopped because of
+        # side effects, among participants with at least one known stop
+        # status (answered, or 0 by the no-side-effects rule above). As before,
+        # every taken drug counts in the denominator; a drug whose status is
+        # unknown adds nothing to the numerator.
+        intolerance = if (any(!is.na(stopped_due_to_se))) {
+          sum(stopped_due_to_se == 1, na.rm = TRUE) / n()
+        } else {
+          NA_real_
+        },
+        # Total duration on antidepressants: the sum of the duration codes
+        # (1 = 1-3 months ... 7 = more than 4 years) over the drugs where one
+        # was given; missing when none was.
+        time = if (any(!is.na(length_taken))) sum(length_taken, na.rm = TRUE) else NA_real_,
+        # Average age at starting an antidepressant, in decades, over valid ages.
+        avg_start_age = if (any(!is.na(start_age_valid))) {
+          mean(start_age_valid, na.rm = TRUE) / 10
+        } else {
+          NA_real_
+        },
+        # Duration of improvement on the first medication (by valid start age,
+        # then list order) for which one was reported: 0 none, 1 under a month
+        # ... 5 more than 12 months. "Not sure" is missing.
+        first_imprv = {
+          o <- order(start_age_valid, match(medication, antidepressants), na.last = TRUE)
+          v <- improvement_duration[o]
+          v[!is.na(v)][1]
+        },
+        .groups = "drop"
+      ),
+    by = "person_id"
   ) %>%
-  left_join(med_use_long, by = c("ID", "medication")) %>%
-  dplyr::mutate(took_med = coalesce(took_med, 0)) %>%
-  rowwise() %>%
+  dplyr::mutate(n_meds = coalesce(n_meds, 0L))
+
+# Benefit questions, answered once for all antidepressants.
+best_items <- grep("^antidepressant_ben\\.", names(person), value = TRUE)
+ben_person <- person %>%
+  filter(person_id %in% takers) %>%
   dplyr::mutate(
-    all_se_missing = all(is.na(c_across(dry_mouth:other))),
-    n_se_raw = sum(c_across(dry_mouth:other), na.rm = TRUE),
-    n_se = case_when(
-      took_med == 1 & all_se_missing ~ 0,
-      took_med == 0 & all_se_missing ~ 0,
-      TRUE ~ n_se_raw
-    )
+    n_best_ticked = rowSums(across(all_of(best_items), is_tick)),
+    any_best_answered = rowSums(across(all_of(best_items), answered)) > 0,
+    # Number of best aspects ticked. With none ticked it is 0 when the
+    # participant answered the benefit questions (rated the benefit or
+    # answered a box), and missing when they answered none of them.
+    n_best = case_when(
+      n_best_ticked > 0 ~ n_best_ticked,
+      any_best_answered | !is.na(med.benefit_rating) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    # Side-effect severity (ruling A1): 0 = No to the any-side-effects
+    # question, 1-5 = the star rating reversed so that 5 is the worst.
+    # Benefit rating (ruling A5): 1-5 stars; a raw 0 is missing. Both are
+    # derived by the pipeline.
+    se_rating = med.sideeffect_severity,
+    ben_rating = med.benefit_rating
   ) %>%
-  ungroup() %>%
-  select(ID, medication, n_se)
+  select(person_id, se_rating, ben_rating, n_best)
 
-# 4. Remission / Improvement Duration
-# ------------------------------------------------------------------------------
-remission_long <- antidepressants_imprv_glad_med_id %>%
-  pivot_meds("antidepressants_imprv.condition_period_time_experience", "remission")
-
-# 5. Benefits (Count and Rating) - STATIC (Not longitudinal per med)
-# ------------------------------------------------------------------------------
-# These appear to be overall ratings, not per-medication.
-ben_static <- antidepressants_ben_glad_med_id %>%
-  na_convert() %>%
-  id_select(ben_rating = antidepressants_ben.benefits_rate_taking_antidepressantss) %>%
-  dplyr::mutate(ben_rating = factor(ben_rating, ordered = TRUE))
-
-n_best_static <- antidepressants_ben_glad_med_id %>%
-  na_convert() %>%
-  # Drop participants who answered nothing in this questionnaire before summing.
-  # `rowSums(na.rm = TRUE)` returns 0 for an all-missing row, so without this a
-  # non-responder is silently recorded as having reported no best aspects; 546
-  # participants were affected and entered the model as genuine zeros. Removing
-  # all-NA rows keeps the distinction the outcome needs: someone who rated the
-  # benefits but selected no best aspects still has an answered row and a true
-  # zero, whereas someone who answered none of it becomes missing on the join.
-  na_row_remove() %>%
-  dplyr::mutate(
-    n_best = rowSums(dplyr::select(., starts_with("antidepressants_ben.") & where(is.numeric) & !contains("benefits_rate")), na.rm = TRUE)
-  ) %>%
-  id_select(n_best) %>%
-  # Ordered, not numeric: fit_model_non_glmm() dispatches on the outcome's type,
-  # so a numeric n_best is fitted as a hurdle model rather than the proportional
-  # odds model the Methods describe.
-  dplyr::mutate(n_best = factor(n_best, ordered = TRUE))
-
-# 6. Intolerance (Stopped due to SE)
-# ------------------------------------------------------------------------------
-intolerance_long <- sideeffects_antidepressants_id %>%
-  select(ID, contains("side_effects_stop_taking")) %>%
-  pivot_meds("sideeffects.side_effects_stop_taking", "stopped_due_to_se")
-
-# 7. Join Everything (Longitudinal Part)
-# ------------------------------------------------------------------------------
-med_data_long <- taken_meds_long %>%
-  left_join(start_age_long, by = c("ID", "medication")) %>%
-  left_join(eff_long, by = c("ID", "medication")) %>%
-  left_join(se_long, by = c("ID", "medication")) %>%
-  left_join(remission_long, by = c("ID", "medication")) %>%
-  left_join(intolerance_long, by = c("ID", "medication"))
-
-# 8. Join with Static Demographics
-# ------------------------------------------------------------------------------
-static_dat_list <- list(
-  sex_med,
-  employment_med,
-  signup_bmi_height_weight_med,
-  marital_status_med,
-  mhd_med,
-  disability_illness_bin,
-  disabilities_illnesses,
-  grouped_illnesses,
-  audit_med,
-  cidid_recurrence_med,
-  gad7_med,
-  phq9_med,
-  wsas_med,
-  n_relatives,
-  smoking_pack_year,
-  se_rating,
-  ben_static,  # Added
-  n_best_static, # Added
-  avg_start_age # Added
+# Covariates (rulings in section D; every one comes from the pipeline).
+employment_levels <- c(
+  "1" = "In_paid_employment_or_self_employed",
+  "2" = "Retired",
+  "3" = "Looking_after_home_and_or_family",
+  "4" = "Unable_to_work_because_of_sickness_or_disability",
+  "5" = "Unemployed",
+  "6" = "Doing_unpaid_or_voluntary_work",
+  "7" = "Full_or_part_time_student"
 )
 
-static_dat <- reduce(static_dat_list, left_join, by = "ID")
-
-# Final Join
-dat_long <- med_data_long %>%
-  left_join(static_dat, by = "ID") %>%
-  filter(
-     Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder == "No"
-  ) %>%
-  select(-Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder) %>%
-  mutate_if(is.factor, droplevels)
-
-# Format outcomes
-dat_long <- dat_long %>%
-  dplyr::mutate(
-    effectiveness = factor(effectiveness, ordered = TRUE),
-    remission = factor(remission, ordered = TRUE),
-    ben_rating = factor(ben_rating, ordered = TRUE),
-    # Simplify remission if needed (original code cut it)
-    # Keeping raw for now, can transform in model step if needed
+covariates <- person %>%
+  transmute(
+    person_id,
+    cohort = factor(cohort, levels = c("Baseline", "SA8")),
+    # Sex: one variable from the sign-up survey in both cohorts (ruling `sex`).
+    sex = factor(
+      answer_value(dem.select_questionnaire_items_medical__2),
+      levels = c(0, 1), labels = c("Male", "Female")
+    ),
+    bmi = demographics.bmi_signup,
+    # Employment: seven shared categories (ruling `employment`); "None of the
+    # above" and "Other" are missing. Treatment-coded against paid employment.
+    employment = unname(employment_levels[as.character(
+      employment.what_is_your_current_employment_status_glad_sa8
+    )]),
+    # Marital status: three groups (ruling `marital`), coded against "Not in a
+    # relationship".
+    marital = dem.marital_status_grouped,
+    Not_in_relationship_In_relationship = ifelse(is.na(marital), NA_integer_,
+      as.integer(marital == "In a relationship")),
+    Not_in_relationship_Married = ifelse(is.na(marital), NA_integer_,
+      as.integer(marital == "Married")),
+    # Psychiatric diagnoses (rulings `adhd_asd`, `pd`, `panic`, `ed_group`,
+    # `ed_screen`, `comorb_groups`, `comorb_blank`). The eating-disorder group
+    # and the comorbidity count are taken as the pipeline delivers them; no
+    # value is filled here.
+    eating_disorders_numeric = label_to_binary(mhd.eating_disorders,
+      "Eating disorder", "No eating disorder"),
+    mhd_addadhd_numeric = label_to_binary(mhd.adhd_diagnosis, "ADHD", "No ADHD"),
+    obsessive_compulsive_disorders_numeric = label_to_binary(
+      mhd.obsessive_compulsive_disorders,
+      "Obsessive compulsive disorder", "No obsessive compulsive disorder"
+    ),
+    mhd_personality_disorder_numeric = label_to_binary(mhd.any_personality_disorder,
+      "Personality disorder", "No personality disorder"),
+    autism_spectrum_disorder_numeric = label_to_binary(mhd.autism_diagnosis,
+      "Autism spectrum disorder", "No autism spectrum disorder"),
+    comorbidity_total_count_numeric = mhd.disorder_groups_count,
+    depression_and_anxiety = mhd.depression_and_anxiety,
+    Depressive_and_anxiety_disorder_Only_anxiety_disorder =
+      level_dummy(depression_and_anxiety, "Only anxiety disorder"),
+    Depressive_and_anxiety_disorder_Only_depressive_disorder =
+      level_dummy(depression_and_anxiety, "Only depressive disorder"),
+    No_psychotic_or_bipolar_disorder_Only_bipolar_disorder =
+      level_dummy(mhd.bipolar_and_schizophrenia, "Only bipolar disorder"),
+    No_psychotic_or_bipolar_disorder_Only_psychotic_disorder =
+      level_dummy(mhd.bipolar_and_schizophrenia, "Only psychotic disorder"),
+    No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder =
+      level_dummy(mhd.bipolar_and_schizophrenia, "Psychotic and bipolar disorder"),
+    # Disability: the shared disability question (ruling `disability`).
+    disable_bin = answer_value(dem.disability),
+    # Physical illness groups: counts of conditions both surveys ask, missing
+    # when a page was not answered (rulings `ill_*`).
+    score_cardiometabolic = illness.cardiometabolic_count_glad_sa8,
+    score_neurological = illness.neurological_count_glad_sa8,
+    score_autoimmune = illness.autoimmune_count_glad_sa8,
+    score_respiratory = illness.respiratory_atopic_count_glad_sa8,
+    score_oncology = illness.oncological_count_glad_sa8,
+    score_musculoskeletal = illness.musculoskeletal_count_glad_sa8,
+    # AUDIT: glad's score for Baseline; SA8 scored on all ten items (ruling
+    # `audit`). How SA8 never-drinkers are scored is the pipeline's to decide;
+    # whatever it delivers is used as is.
+    audit = case_when(
+      cohort == "Baseline" ~ audit.sum_score,
+      cohort == "SA8" ~ alcohol.audit_sum_score_sa8
+    ),
+    # Number of depressive episodes (ruling `episodes`).
+    cidid_recurrence = cidid.number_of_episodes,
+    gad7 = gad7.sum_score,
+    phq9 = phq9.sum_score,
+    wsas = wsas.sum_score,
+    # Family history: the number of diagnosis types with at least one affected
+    # immediate relative (rulings `fh_types`, `fh_ed`, `fh_other`). Replaces the
+    # old sum of typed relative counts, `n_relatives`. Baseline people without
+    # the Family History survey stay in, with it missing (`missing_surveys`).
+    fh_diagnosis_types = fh.diagnosis_types_count_glad_sa8,
+    # Pack-years, never-smokers and vapers 0 (rulings `pack_*`).
+    pack_year = smk.pack_years_incl_never_smokers
   )
+
+for (lev in employment_levels[-1]) {
+  covariates[[paste0("In_paid_employment_or_self_employed_", lev)]] <-
+    level_dummy(covariates$employment, lev)
+}
+
+covariates <- covariates %>%
+  select(-employment, -marital) %>%
+  relocate(starts_with("In_paid_employment_or_self_employed_"), .after = sex)
+
+# The analysis is of people with a depressive or anxiety disorder: drop those
+# with neither, and those for whom it is unknown.
+in_scope <- covariates %>%
+  filter(
+    !is.na(depression_and_anxiety),
+    depression_and_anxiety != "No depressive or anxiety disorder"
+  ) %>%
+  select(-depression_and_anxiety)
+
+# ==============================================================================
+# FRAMES
+# ==============================================================================
+static_dat <- in_scope %>%
+  inner_join(ben_person, by = "person_id") %>%
+  left_join(select(med_person, person_id, avg_start_age), by = "person_id") %>%
+  dplyr::mutate(
+    se_rating = factor(se_rating, levels = 0:5, ordered = TRUE),
+    ben_rating = factor(ben_rating, levels = 1:5, ordered = TRUE),
+    n_best = factor(n_best, levels = 0:8, ordered = TRUE)
+  )
+
+dat_long <- med_long %>%
+  select(
+    person_id, medication, start_age, cumulative_med_count,
+    effectiveness, n_se, remission, stopped_due_to_se
+  ) %>%
+  inner_join(static_dat, by = "person_id") %>%
+  dplyr::mutate(
+    effectiveness = factor(effectiveness, levels = 0:2, ordered = TRUE),
+    # Binary; kept as a two-level ordered factor as before, which fit_glmm()
+    # routes to binomial glmer.
+    remission = factor(remission, levels = 0:1, ordered = TRUE)
+  ) %>%
+  rename(ID = person_id) %>%
+  relocate(ID, cohort)
 
 cache("dat_long")
 
-# Per-participant analysis frame
-# ------------------------------------------------------------------------------
-# Four outcomes -- the side effect severity rating, the benefit rating, the
-# number of best aspects and the improvement duration -- are single summary
-# responses per participant, so there is no within-participant variation for a
-# longitudinal model to use and they are fitted per participant instead.
-#
-# Building `dat` was dropped when the GLMM pipeline landed, but
-# src/02.regression.r still fits those four outcomes from it, so the pipeline had
-# been running off a stale `dat` left in cache/ by the pre-GLMM code. That cache
-# predated the cleaning corrections in 77b2466 and, once the side effect severity
-# rating was recoded above, would have silently kept the old coding. It is
-# rebuilt here from the same components as `dat_long`.
-dat <- reduce(
-  c(list(n_meds), static_dat_list, list(mean_n_se, intolerance, time, first_imprv)),
-  left_join,
-  by = "ID"
-) %>%
-  filter(
-    Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder == "No"
-  ) %>%
-  select(-Depressive_and_anxiety_disorder_No_depressive_or_anxiety_disorder) %>%
-  mutate_if(is.factor, droplevels) %>%
-  # `intolerance` is the proportion of a participant's antidepressants stopped
-  # because of side effects, and enters the models as an ordered three-level
-  # variable, as it did before.
+# Per-participant analysis frame for the legacy outcomes (side-effect
+# severity, benefit rating, number of best aspects, first improvement
+# duration), which are single responses per participant.
+dat <- static_dat %>%
+  left_join(select(med_person, -avg_start_age), by = "person_id") %>%
   dplyr::mutate(
-    intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = TRUE)
-  )
+    # `intolerance` enters the models as an ordered three-level variable cut
+    # into equal-width bands of the observed proportion, as before.
+    intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = TRUE),
+    first_imprv = factor(first_imprv, levels = 0:5, ordered = TRUE)
+  ) %>%
+  rename(ID = person_id) %>%
+  relocate(ID, cohort, n_meds)
 
 cache("dat")
 
 # Labels
 # ------------------------------------------------------------------------------
-# Define labels for plotting/tables
+lab_grouped_illnesses <- c(
+  score_cardiometabolic = "Cardiometabolic & endocrine Disorders",
+  score_neurological    = "Neurological conditions",
+  score_autoimmune      = "Autoimmune & inflammatory Diseases",
+  score_respiratory     = "Respiratory & atopic conditions",
+  score_oncology        = "Oncological disorders",
+  score_musculoskeletal = "Musculoskeletal & pain disorders"
+)
+
+cache("lab_grouped_illnesses")
+
 labels <- c(
-  "Medication Name",
-  "Start Age",
-  "Cumulative Medication Count",
-  "Effectiveness",
-  "Number of Side Effects",
-  "Remission",
-  "Stopped due to Side Effects",
-  "Sex (female)",
-  "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
-  "Full or part-time student v.s In paid employment or self-employed",
-  "Looking after home and/or family v.s In paid employment or self-employed",
-  "Retired v.s In paid employment",
-  "Unable to work because of sickness or disability v.s In paid employment or self-employed",
-  "Unemployed v.s. In paid employment or self-employed",
-  "BMI (kg/m^2)",
-  "In relationship v.s Not in relationship",
-  "Married v.s Not in relationship",
-  "Eating disorders",
-  "ADHD",
-  "Obsessive compulsive disorders",
-  "Personality disorders",
-  "Autism spectrum disorders",
-  "Number of comorbidities",
-  "Only anxiety disorder v.s Depressive and anxiety disorder",
-  "Only depressive disorder v.s Depressive and anxiety disorder",
-  "Only bipolar disorder v.s No psychotic or bipolar disorder",
-  "Only psychotic disorder v.s No psychotic or bipolar disorder",
-  "Psychotic and bipolar disorder v.s No psychotic or bipolar disorder",
-  "Disability or illness",
-  lab_illnesses,
+  medication = "Medication Name",
+  start_age = "Start Age",
+  cumulative_med_count = "Cumulative Medication Count",
+  effectiveness = "Effectiveness",
+  n_se = "Number of Side Effects",
+  remission = "Remission",
+  stopped_due_to_se = "Stopped due to Side Effects",
+  cohort = "Survey cohort (SA8 vs. Baseline)",
+  sex = "Sex (female)",
+  In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work =
+    "Doing unpaid or voluntary work v.s. In paid employment or self-employed",
+  In_paid_employment_or_self_employed_Full_or_part_time_student =
+    "Full or part-time student v.s In paid employment or self-employed",
+  In_paid_employment_or_self_employed_Looking_after_home_and_or_family =
+    "Looking after home and/or family v.s In paid employment or self-employed",
+  In_paid_employment_or_self_employed_Retired = "Retired v.s In paid employment",
+  In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability =
+    "Unable to work because of sickness or disability v.s In paid employment or self-employed",
+  In_paid_employment_or_self_employed_Unemployed =
+    "Unemployed v.s. In paid employment or self-employed",
+  bmi = "BMI (kg/m^2)",
+  Not_in_relationship_In_relationship = "In relationship v.s Not in relationship",
+  Not_in_relationship_Married = "Married v.s Not in relationship",
+  eating_disorders_numeric = "Eating disorders",
+  mhd_addadhd_numeric = "ADHD",
+  obsessive_compulsive_disorders_numeric = "Obsessive compulsive disorders",
+  mhd_personality_disorder_numeric = "Personality disorders",
+  autism_spectrum_disorder_numeric = "Autism spectrum disorders",
+  comorbidity_total_count_numeric = "Number of comorbidities",
+  Depressive_and_anxiety_disorder_Only_anxiety_disorder =
+    "Only anxiety disorder v.s Depressive and anxiety disorder",
+  Depressive_and_anxiety_disorder_Only_depressive_disorder =
+    "Only depressive disorder v.s Depressive and anxiety disorder",
+  No_psychotic_or_bipolar_disorder_Only_bipolar_disorder =
+    "Only bipolar disorder v.s No psychotic or bipolar disorder",
+  No_psychotic_or_bipolar_disorder_Only_psychotic_disorder =
+    "Only psychotic disorder v.s No psychotic or bipolar disorder",
+  No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder =
+    "Psychotic and bipolar disorder v.s No psychotic or bipolar disorder",
+  disable_bin = "Disability or illness",
   lab_grouped_illnesses,
-  "Alcohol use disorder",
-  "Number of depressive disorder episodes",
-  "Current anxiety",
-  "Current depression",
-  "Work and social impairment",
-  "Number of relatives with psychiatric disorders",
-  "Pack years of cigarettes smoked",
-  "Benefit rating",
-  "Number of best aspects",
-  "Average starting age/10",
-  "Side effect severity rating"
+  audit = "Alcohol use disorder",
+  cidid_recurrence = "Number of depressive disorder episodes",
+  gad7 = "Current anxiety",
+  phq9 = "Current depression",
+  wsas = "Work and social impairment",
+  fh_diagnosis_types = "Number of psychiatric diagnosis types in immediate family",
+  pack_year = "Pack years of cigarettes smoked",
+  ben_rating = "Benefit rating",
+  n_best = "Number of best aspects",
+  avg_start_age = "Average starting age/10",
+  se_rating = "Side effect severity rating"
 )
 
-# Map labels to column names
-# We do this manually or by name matching.
-# Let's create a named vector.
-label_names <- c(
-  "medication",
-  "start_age",
-  "cumulative_med_count",
-  "effectiveness",
-  "n_se",
-  "remission",
-  "stopped_due_to_se",
-  "sex",
-  "In_paid_employment_or_self_employed_Doing_unpaid_or_voluntary_work",
-  "In_paid_employment_or_self_employed_Full_or_part_time_student",
-  "In_paid_employment_or_self_employed_Looking_after_home_and_or_family",
-  "In_paid_employment_or_self_employed_Retired",
-  "In_paid_employment_or_self_employed_Unable_to_work_because_of_sickness_or_disability",
-  "In_paid_employment_or_self_employed_Unemployed",
-  "bmi",
-  "Not_in_relationship_In_relationship",
-  "Not_in_relationship_Married",
-  "eating_disorders_numeric",
-  "mhd_addadhd_numeric",
-  "obsessive_compulsive_disorders_numeric",
-  "mhd_personality_disorder_numeric",
-  "autism_spectrum_disorder_numeric",
-  "comorbidity_total_count_numeric",
-  "Depressive_and_anxiety_disorder_Only_anxiety_disorder",
-  "Depressive_and_anxiety_disorder_Only_depressive_disorder",
-  "No_psychotic_or_bipolar_disorder_Only_bipolar_disorder",
-  "No_psychotic_or_bipolar_disorder_Only_psychotic_disorder",
-  "No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder",
-  "disable_bin",
-  illnesses,
-  names(lab_grouped_illnesses),
-  "audit",
-  "cidid_recurrence",
-  "gad7",
-  "phq9",
-  "wsas",
-  "n_relatives",
-  "pack_year",
-  "ben_rating",
-  "n_best",
-  "avg_start_age",
-  "se_rating"
-)
-
-labels <- setNames(labels, label_names)
 cache("labels")
