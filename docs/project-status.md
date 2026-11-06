@@ -5,6 +5,28 @@ reconstruct it from transcripts. Update this when the state changes.
 
 **As of 2026-07-27.**
 
+## Migration to the ilovedata extracts (branch `ilovedata-migration`, 2026-11-06)
+
+The frames are now built from the ilovedata pipeline for two cohorts, Baseline
+and SA8 (see "Data source" in `docs/analysis-pipeline.md`). Verified on the
+1,000-per-survey development store only: `load.project()` builds both frames,
+and every GLMM and legacy design matrix builds. **No model has been refitted.**
+The cached fits and products in the main checkout still describe the old data.
+
+Open before a full-cohort refit:
+
+- The legacy psychiatric block bundles `comorbidity_total_count_numeric` with
+  the diagnosis dummies, and under ruling `comorb_groups` it is now exactly their
+  sum, so that design is rank-deficient by one column. A fix would split it out
+  as the GLMM did on 2026-08-05. Needs the owner.
+- Pending in the pipeline: AUDIT for SA8 never-drinkers (missing today), and
+  the eating-disorder group / comorbidity count for SA8 people who answered
+  neither screen (missing today). The munge passes both through unchanged.
+- In `glad_med`, 217 "further symptoms" answers (186 people) are 0 in the old
+  extraction and 1 in the pipeline, as are 62 improvement durations (old 0, new
+  1–5). Effectiveness agrees on every row, so this is not a row mismatch.
+  Unexplained; the raw exports need checking.
+
 ## Where things stand
 
 The pipeline is complete and current. The longitudinal GLMM analysis was

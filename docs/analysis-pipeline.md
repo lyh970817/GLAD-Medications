@@ -4,6 +4,156 @@ Reference for the structure of the analysis, its outputs, and the traps that are
 easy to fall into. Written for someone (or some agent) picking the project up
 cold.
 
+## Data source: the ilovedata extracts
+
+The analysis frames are built from the **ilovedata extraction pipeline**
+(`~/Yandex.Disk/Projects/Research/pipelines/ilovedata`), not from the old
+`glad-data-extraction` `.rds` files. One path builds both cohorts:
+
+| Cohort | Surveys | Joined on |
+|---|---|---|
+| Baseline | `glad` (sign-up: covariates), `glad_med` (standalone medication survey), `glad_fh` (Family History) | `person_id` |
+| SA8 | `glad_sa8_signup` (all three blocks in one survey) | — |
+
+`person_id` is the same 28-character hash the old files carry as `ID`, so old
+and new frames can be compared person by person.
+
+### Step 1: export (run in the pipeline's environment)
+
+`extract/ilovedata_export.R` reads a built store **read-only** and writes three
+files. It needs the pipeline's Nix environment, and `--no-init-file` keeps this
+project's renv `.Rprofile` out of that R session:
+
+```sh
+P=~/Yandex.Disk/Projects/Research/pipelines/ilovedata   # or a worktree of it
+env -u ILOVEDATA_LIVE_FETCH ILOVEDATA_DUCKDB_MEMORY_LIMIT=6GB ILOVEDATA_DUCKDB_THREADS=4 \
+  nix develop "$P" -c Rscript --no-init-file extract/ilovedata_export.R \
+  --pipeline "$P" --store "$P/store.duckdb" --out data
+```
+
+The two `ILOVEDATA_DUCKDB_*` settings raise the engine's DuckDB budget from its
+2 GB default. Under the default, the derived-variable pulls spill several
+gigabytes into DuckDB's temporary directory (under `$TMPDIR`) and failed with
+"No space left on device" when the disk had 2.7 GB free. With 6 GB the
+1,000-per-survey store exports in about 25 minutes. `--vars <n>` (person-level
+variables per call, default 6) and `--chunk <n>` (drugs per call, default 7)
+can be lowered further on a full-cohort store; `ILOVEDATA_DUCKDB_TEMP_DIRECTORY`
+moves the spill to a disk with room (not a cloud-synced one: it holds
+participant values).
+
+`--decisions <dir>` sets the Decision files (default
+`$ILOVEDATA_DECISIONS_ROOT`, else `<pipeline>/examples/decisions`, which is where
+the GLAD-Medications variables are defined today). The script refuses to run
+with `ILOVEDATA_LIVE_FETCH` set and never contacts Qualtrics. Nothing in it
+depends on the size of the store: the same command works on the 1,000-per-survey
+development store and on a full-cohort one. It stops, rather than skipping,
+if any of the 28 antidepressants' items cannot be resolved to exactly one
+Anchor per survey.
+
+| File in `data/` | Grain | Contents |
+|---|---|---|
+| `ilovedata_person.rds` | person | `cohort`, survey membership (`in_glad`, `in_glad_med`, `in_glad_fh`, `in_glad_sa8_signup`), every person-level variable under its pipeline name |
+| `ilovedata_person_drug.rds` | person × antidepressant | taken tick, 30 side-effect ticks, `se_recorded` (checklist cells with a stored raw value, 0–30), "No side effects" tick, stopped, effectiveness, further symptoms and improvement duration per page (`_a`/`_b`), start age, duration taken |
+| `ilovedata_manifest.rds` | — | snapshot, pipeline commit, store, decisions root, export time; the Anchor used for each item × drug × survey is in `attr(, "anchor_map")` |
+
+Item columns keep their **Response Status** in the value (the pipeline's
+`sentinel = TRUE`): an answer, `NA` for never shown, or -777 / -888 / -999 /
+-555 / -666 for seen-not-answered / don't know / prefer not / not applicable /
+implausible. `answered()`, `answer_value()` and `is_tick()` in
+`lib/01.munge_helpers.r` read them; the munge decides missing versus zero from
+the status and never from a blanket `na.rm`.
+
+### Step 2: munge (ordinary `load.project()`)
+
+`munge/01.dat_clean.r` builds `dat_long` and `dat` from the two extracts, applying
+the rulings in `docs/sa8-migration-plan.md` (sections C and D) where each is
+cited. (That plan is not yet committed; it lives in the main checkout.) Who
+enters:
+
+- **Antidepressant takers** are people with a tick on either antidepressant
+  list (including the second list's "a different antidepressant"). Membership
+  never comes from the any-side-effects question or the rating items: SA8
+  people who were never routed into the medication section currently show as
+  "seen, not answered" there, because the pipeline cannot yet compile SA8's
+  nested routing.
+- `dat_long`: one row per taker × one of the 28 named antidepressants ticked.
+- `dat`: one row per taker; a taker of only "a different antidepressant" has
+  `n_meds = 0` and no `dat_long` rows.
+- Both keep only people with a depressive or anxiety disorder
+  (`mhd.depression_and_anxiety` known and not "neither"), as before.
+- A person found in both cohorts stops the munge: no rule says which answers
+  they contribute.
+
+`cohort` (Baseline / SA8) is a column of both frames for descriptive tables.
+It is **not a model term** (ruling `wave` = c).
+
+### Contract changes relative to the old frames
+
+- `n_relatives` is replaced by `fh_diagnosis_types`, the number of diagnosis
+  types with an affected immediate relative (focal predictor; in the GLMM
+  sensitivity adjustment set; in the legacy adjustment set).
+- `remission` is now remission (1 = worked moderately/very well and no further
+  symptoms; 0 = further symptoms, or did not work at all), not the raw
+  "further symptoms" item.
+- `n_se` (ruling A2, A3 as amended 2026-11-06): the number ticked; 0 for a No
+  on the any-side-effects question (the checklist is not shown after No); 0 for
+  Yes when the drug's checklist page was displayed and recorded with nothing
+  ticked, with or without the "No side effects" tick; missing when the drug's
+  checklist cells are empty (page never reached or not recorded). "Displayed
+  and recorded" is `se_recorded > 0`: the export counts the drug's checklist
+  cells holding a raw value (Qualtrics' 0 or -77), because the sentinel coding
+  gives -77 and an empty cell the same -777. `mean_n_se` averages over known
+  counts only.
+- `stopped_due_to_se`: the answer where the item was shown, 0 where it was not
+  shown because `n_se` is a ruled 0, and missing for seen-not-answered. This
+  matches the old values for gate No and the "No side effects" tick; it is now
+  also 0 for a recorded checklist with nothing ticked. `intolerance` counts unknown drugs in its denominator as
+  before and is missing only when no drug has a known status.
+- `comorbidity_total_count_numeric` is, under ruling `comorb_groups`, an exact
+  linear combination of the ten diagnosis dummies (dep/anx + bipolar/psychotic
+  + ED + OCD + PD + ADHD + ASD). The GLMM fits it on its own, but the legacy
+  psychiatric block in `src/02.regression.r` still bundles it with them, so that
+  design matrix is rank-deficient by one column. Open; see
+  `docs/project-status.md`.
+- `ben_rating` has five levels (1–5); raw 0 is missing.
+- `comorbidity_total_count_numeric` counts the eight ruled groups.
+- The 37 individual illness ticks are gone from the frames (they entered no
+  model); the six `score_*` group counts remain. `illnesses` and
+  `grouped_illnesses` are no longer cached.
+- `dat` no longer contains glad_med respondents who took no antidepressant
+  (old `n_meds = 0` rows from the "None" tick).
+- `time` is missing, rather than 0, for a taker who gave no duration for any
+  drug.
+- The leftover join columns of the old `dat_long` (`sample.x`, `startDate.y`,
+  the per-drug improvement columns, ...) are gone.
+
+### Switching a checkout to the new data
+
+ProjectTemplate auto-loads **every** file in `data/` and, with
+`cache_loading: TRUE`, every object in `cache/`. In the main checkout, before
+the first `load.project()` on the new data:
+
+1. **Move the 35 old `.rds` files out of `data/`** (into a sibling folder
+   outside the project, for example `../GLAD-Medications-legacy-data/`). The new
+   munge does not read them, but they would still be loaded on every run, and
+   they are irreplaceable, so they must be moved, not deleted. Keep
+   `data/.gitignore`.
+2. **Move the model caches out of `cache/`**: `sef_models`,
+   `sef_models_compete`, `eff_models`, `eff_models_compete`, `glmm_models`,
+   `glmm_models_cov`, `glmm_models_cov_famhist` and the `cache/glmm_fits/`
+   directory. `fit_or_cached()` reuses a cached legacy model object by **name**,
+   so without this step `src/02.regression.r` would report old-data models as
+   current. (The GLMM per-set fits are keyed by a hash of the data and would
+   simply not be hit, but they are stale too.) Also move `illnesses.RData` and
+   `grouped_illnesses.RData`, which nothing writes any more.
+3. Run the export with `--out data`, then `load.project()`. The munge's
+   `cache("dat")`, `cache("dat_long")` and `cache("labels")` overwrite the old
+   cached frames, which is why step 2 should keep a copy of `cache/` as a whole.
+4. The one refit, on full-cohort data, is then `FORCE_REFIT=TRUE Rscript
+   src/02.regression.r` (see "Traps").
+
+`results/medications_sig_final.xlsx` is not touched by any of this.
+
 ## Two parallel pipelines
 
 The project runs **two analyses side by side** on the same data. This is
@@ -60,8 +210,10 @@ equivalents are named `mean_n_se`, `se_rating`, and `intolerance`.
 
 ## Adjusted models
 
-Adjustment set: `sex`, `start_age`, `n_relatives`, `cumulative_med_count`,
-`phq9`. These are **covariate-only** — `get_adjusted_indeps_list_for_dep()`
+GLMM adjustment set: `sex`, `start_age`, `cumulative_med_count`, `phq9`; the
+sensitivity set adds family history (`fh_diagnosis_types`, formerly
+`n_relatives`). Legacy adjustment set: `sex`, `avg_start_age`,
+`fh_diagnosis_types`. These are **covariate-only** — `get_adjusted_indeps_list_for_dep()`
 strips them from the focal predictor list so a variable never competes with
 itself, and `drop_covariate_terms()` removes them from the output tables
 (matching on prefix, so expanded factor terms like `sexFemale` are caught too).
