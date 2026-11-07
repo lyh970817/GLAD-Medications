@@ -519,13 +519,18 @@ nonlong_indeps_base <- c(
       "obsessive_compulsive_disorders_numeric",
       "mhd_personality_disorder_numeric",
       "autism_spectrum_disorder_numeric",
-      "comorbidity_total_count_numeric",
       "Depressive_and_anxiety_disorder_Only_anxiety_disorder",
       "Depressive_and_anxiety_disorder_Only_depressive_disorder",
       "No_psychotic_or_bipolar_disorder_Only_bipolar_disorder",
       "No_psychotic_or_bipolar_disorder_Only_psychotic_disorder",
       "No_psychotic_or_bipolar_disorder_Psychotic_and_bipolar_disorder"
     ),
+    # Split out of the diagnosis vector on 2026-11-07, as the GLMM block was on
+    # 2026-08-05. Under ruling `comorb_groups` the count is exactly the sum of
+    # the diagnosis indicators in the set above, so fitting it alongside them
+    # made that design matrix rank deficient by one column. Fitted alone it is
+    # comparable with the other single-predictor models.
+    c("comorbidity_total_count_numeric"),
     c("cidid_recurrence"),
     c("time")
   ),
