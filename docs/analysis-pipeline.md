@@ -124,6 +124,10 @@ It is **not a model term** (ruling `wave` = c).
   count keeps its label ("Number of comorbidities"), which is how the
   workbooks, plots and `src/04.manuscript_tables.r` find it.
 - `ben_rating` has five levels (1–5); raw 0 is missing.
+- `first_imprv`: "Not sure" on a drug's improvement-duration item arrives
+  as -888 (`dont_know`) since snapshot 8. Like every non-answer, it makes that
+  drug's duration missing. `first_imprv` then takes the next drug, by start
+  age, that has a reported duration. It is missing only if no drug has one.
 - `comorbidity_total_count_numeric` counts the eight ruled groups.
 - The 37 individual illness ticks are gone from the frames (they entered no
   model); the six `score_*` group counts remain. `illnesses` and

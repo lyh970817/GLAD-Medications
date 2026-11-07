@@ -20,13 +20,30 @@ its own model (it was rank deficient bundled with the diagnosis dummies).
 
 Open before a full-cohort refit:
 
-- Pending in the pipeline: AUDIT for SA8 never-drinkers (missing today), and
-  the eating-disorder group / comorbidity count for SA8 people who answered
-  neither screen (missing today). The munge passes both through unchanged.
+- `first_imprv` when the earliest drug's improvement duration is "Not sure"
+  (see the 2026-11-07 check below): today the munge takes the next drug with a
+  reported duration. Needs a ruling if that should be missing instead.
 - In `glad_med`, 217 "further symptoms" answers (186 people) are 0 in the old
   extraction and 1 in the pipeline, as are 62 improvement durations (old 0, new
   1–5). Effectiveness agrees on every row, so this is not a row mismatch.
   Unexplained; the raw exports need checking.
+
+Re-export check 2026-11-07 (development store, snapshot 8, pipeline
+`glad-medications-variables` at 62281792): the export and `load.project()` run
+clean, with no munge change. `dat_long` 1,754 rows / 638 people and `dat` 638
+(Baseline 132, SA8 506), the same people as on snapshot 7. Every outcome
+distribution is unchanged. The two items that were pending in the pipeline are
+now filled: SA8 AUDIT goes from 106 missing to 0 (never-drinkers scored 0), and
+the eating-disorder group goes from 48 missing to 0 and the comorbidity count
+from 49 to 1 (SA8 fallback). No other variable changed for anyone. "Not sure"
+on the improvement-duration item now arrives as -888 (`dont_know`), not -777:
+203 drug rows in `dat_long` (Baseline 41, SA8 162; 143 people). `answered()`
+treats it as missing, never as a duration. 79 people have only "Not sure"
+answers, so their `first_imprv` is missing. For 25 people the earliest drug
+was "Not sure", so `first_imprv` comes from a later drug, as it did when
+these cells were -777. In this worktree `load.project()` still needs
+`RENV_CONFIG_AUTOLOADER_ENABLED=FALSE R_LIBS=<main checkout>/renv/library/linux-nixos-zokor/R-4.5/x86_64-pc-linux-gnu`,
+because its own renv library holds only `renv`.
 
 ## Where things stand
 
