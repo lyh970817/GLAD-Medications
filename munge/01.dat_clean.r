@@ -107,17 +107,20 @@ med_long <- taken %>%
       !is.na(gate) & gate == 1 & se_recorded > 0 ~ 0,
       TRUE ~ NA_real_
     ),
-    # Stopped because of side effects, 0 No / 1 Yes, where answered. The item is
-    # shown for a drug only when a side effect was ticked for it (ruling
-    # stop_display). When it was not shown because the drug had no side
-    # effects -- n_se is a ruled true 0 (gate No, or a recorded checklist with
-    # nothing ticked) -- the drug was not stopped because of side effects: 0,
-    # as the previous analysis file had it for gate No and the "No side
-    # effects" tick. Seen and not answered, or not shown for any other reason,
-    # is missing.
+    # Stopped because of side effects, 0 No / 1 Yes (ruling 2026-11-07). The
+    # item is shown for a drug only when a side effect was ticked for it
+    # (ruling stop_display), so it follows n_se:
+    #   - n_se is 0, for whatever reason (gate No; the "No side effects" box
+    #     ticked; a recorded checklist with nothing ticked): 0. A drug with no
+    #     side effects was not stopped because of them. This does not look at
+    #     the stop item's own status.
+    #   - n_se is missing: missing.
+    #   - n_se is above 0: the answer where the item was answered; missing when
+    #     it was seen and not answered.
     stopped_due_to_se = case_when(
+      is.na(n_se) ~ NA_real_,
+      n_se == 0 ~ 0,
       answered(stopped) ~ stopped,
-      is.na(stopped) & !is.na(n_se) & n_se == 0 ~ 0,
       TRUE ~ NA_real_
     ),
     # How well the drug worked: 0 not at all, 1 moderately, 2 very well.
@@ -205,7 +208,7 @@ med_person <- tibble(person_id = takers) %>%
         mean_n_se = if (any(!is.na(n_se))) mean(n_se, na.rm = TRUE) else NA_real_,
         # Proportion of the participant's antidepressants stopped because of
         # side effects, among participants with at least one known stop
-        # status (answered, or 0 by the no-side-effects rule above). As before,
+        # status (answered, or 0 because n_se is 0). As before,
         # every taken drug counts in the denominator; a drug whose status is
         # unknown adds nothing to the numerator.
         intolerance = if (any(!is.na(stopped_due_to_se))) {
