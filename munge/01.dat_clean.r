@@ -1,7 +1,8 @@
 # Builds the two analysis frames from the ilovedata extracts.
 #
 #   dat_long  one row per participant x antidepressant taken (GLMM outcomes)
-#   dat       one row per participant who took an antidepressant (legacy
+#   dat       one row per participant who took at least one of the 28 named
+#             antidepressants, i.e. the people in dat_long (legacy
 #             per-participant outcomes)
 #
 # Inputs, written to data/ by extract/ilovedata_export.R and auto-loaded by
@@ -47,27 +48,23 @@ antidepressants <- unique(person_drug$drug)
 # ==============================================================================
 # WHO ENTERS
 # ==============================================================================
-# A participant is an antidepressant taker when they ticked at least one drug
-# on either antidepressant list, including the second list's "a different
-# antidepressant". Membership is decided by the ticks alone, not by the
-# any-side-effects question or the rating items: in SA8 the pipeline cannot
-# yet mark people who were never routed into the medication section as
-# `not_shown`, so "seen, not answered" on those items is not evidence that a
-# person was asked them.
+# A participant enters when they ticked at least one of the 28 named
+# antidepressants on either list (ruling 2026-11-07). People who ticked "None",
+# and people whose only tick is the second list's "a different antidepressant
+# that isn't listed above", have no named drug and are in neither frame.
+# Membership is decided by the ticks alone, not by the any-side-effects
+# question or the rating items: in SA8 the pipeline cannot yet mark people who
+# were never routed into the medication section as `not_shown`, so "seen, not
+# answered" on those items is not evidence that a person was asked them.
 #
-# dat_long has one row per taken drug among the 28 named ones. dat has one row
-# per taker; a taker of only "a different antidepressant" is in dat with
-# n_meds = 0 and is absent from dat_long.
+# dat_long has one row per taken named drug; dat has one row per participant
+# with at least one, so the two frames hold exactly the same people and
+# n_meds >= 1 in dat.
 taken <- person_drug %>%
   filter(is_tick(took)) %>%
   select(-took)
 
-takers <- person %>%
-  filter(
-    person_id %in% taken$person_id |
-      is_tick(prescription.a_different_antidepressant.1)
-  ) %>%
-  pull(person_id)
+takers <- unique(taken$person_id)
 
 # ==============================================================================
 # PER-MEDICATION OUTCOMES
@@ -237,8 +234,9 @@ med_person <- tibble(person_id = takers) %>%
         .groups = "drop"
       ),
     by = "person_id"
-  ) %>%
-  dplyr::mutate(n_meds = coalesce(n_meds, 0L))
+  )
+
+stopifnot(all(med_person$n_meds >= 1))
 
 # Benefit questions, answered once for all antidepressants.
 best_items <- grep("^antidepressant_ben\\.", names(person), value = TRUE)
@@ -415,6 +413,10 @@ dat <- static_dat %>%
   ) %>%
   rename(ID = person_id) %>%
   relocate(ID, cohort, n_meds)
+
+# Both frames hold exactly the participants with at least one named
+# antidepressant.
+stopifnot(setequal(dat$ID, unique(dat_long$ID)))
 
 cache("dat")
 
