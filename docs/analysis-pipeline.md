@@ -70,15 +70,17 @@ the rulings in `docs/sa8-migration-plan.md` (sections C and D) where each is
 cited. (That plan is not yet committed; it lives in the main checkout.) Who
 enters:
 
-- **Antidepressant takers** are people with a tick on either antidepressant
-  list (including the second list's "a different antidepressant"). Membership
-  never comes from the any-side-effects question or the rating items: SA8
-  people who were never routed into the medication section currently show as
-  "seen, not answered" there, because the pipeline cannot yet compile SA8's
-  nested routing.
+- **Antidepressant takers** are people who ticked at least one of the 28 named
+  antidepressants on either list (ruling 2026-11-07). People who ticked "None",
+  and people whose only tick is "a different antidepressant that isn't listed
+  above", are in neither frame. Membership never comes from the
+  any-side-effects question or the rating items: SA8 people who were never
+  routed into the medication section currently show as "seen, not answered"
+  there, because the pipeline cannot yet compile SA8's nested routing.
 - `dat_long`: one row per taker × one of the 28 named antidepressants ticked.
-- `dat`: one row per taker; a taker of only "a different antidepressant" has
-  `n_meds = 0` and no `dat_long` rows.
+- `dat`: one row per taker, so exactly the people in `dat_long`, with
+  `n_meds` ≥ 1. The munge stops if the two frames' participants differ. (On the
+  1,000-per-survey sample: `dat_long` 1,754 rows, 638 people; `dat` 638 rows.)
 - Both keep only people with a depressive or anxiety disorder
   (`mhd.depression_and_anxiety` known and not "neither"), as before.
 - A person found in both cohorts stops the munge: no rule says which answers
@@ -104,24 +106,31 @@ It is **not a model term** (ruling `wave` = c).
   cells holding a raw value (Qualtrics' 0 or -77), because the sentinel coding
   gives -77 and an empty cell the same -777. `mean_n_se` averages over known
   counts only.
-- `stopped_due_to_se`: the answer where the item was shown, 0 where it was not
-  shown because `n_se` is a ruled 0, and missing for seen-not-answered. This
-  matches the old values for gate No and the "No side effects" tick; it is now
-  also 0 for a recorded checklist with nothing ticked. `intolerance` counts unknown drugs in its denominator as
-  before and is missing only when no drug has a known status.
+- `stopped_due_to_se` (ruling 2026-11-07) follows `n_se`, because the stop
+  item is shown only when a side effect was ticked: 0 for every row whose
+  `n_se` is 0, whatever the reason (gate No, the "No side effects" tick, a
+  recorded checklist with nothing ticked), without looking at the stop item's
+  own status; missing where `n_se` is missing; otherwise the answer, and
+  missing when the item was seen and not answered. This matches the old values
+  for gate No and the "No side effects" tick; it is now also 0 for a recorded
+  checklist with nothing ticked. `intolerance` counts unknown drugs in its
+  denominator as before and is missing only when no drug has a known status.
 - `comorbidity_total_count_numeric` is, under ruling `comorb_groups`, an exact
   linear combination of the ten diagnosis dummies (dep/anx + bipolar/psychotic
-  + ED + OCD + PD + ADHD + ASD). The GLMM fits it on its own, but the legacy
-  psychiatric block in `src/02.regression.r` still bundles it with them, so that
-  design matrix is rank-deficient by one column. Open; see
-  `docs/project-status.md`.
+  + ED + OCD + PD + ADHD + ASD). Both pipelines therefore fit it in its own
+  model: the GLMM since 2026-08-05, the legacy per-participant block since
+  2026-11-07 (bundled with the dummies, that design matrix was rank deficient by
+  one column). Each legacy outcome has one more predictor set than before; the
+  count keeps its label ("Number of comorbidities"), which is how the
+  workbooks, plots and `src/04.manuscript_tables.r` find it.
 - `ben_rating` has five levels (1–5); raw 0 is missing.
 - `comorbidity_total_count_numeric` counts the eight ruled groups.
 - The 37 individual illness ticks are gone from the frames (they entered no
   model); the six `score_*` group counts remain. `illnesses` and
   `grouped_illnesses` are no longer cached.
-- `dat` no longer contains glad_med respondents who took no antidepressant
-  (old `n_meds = 0` rows from the "None" tick).
+- `dat` no longer contains anyone with `n_meds = 0`: neither glad_med
+  respondents who ticked "None" nor takers of only "a different
+  antidepressant".
 - `time` is missing, rather than 0, for a taker who gave no duration for any
   drug.
 - The leftover join columns of the old `dat_long` (`sample.x`, `startDate.y`,
@@ -144,7 +153,10 @@ the first `load.project()` on the new data:
    directory. `fit_or_cached()` reuses a cached legacy model object by **name**,
    so without this step `src/02.regression.r` would report old-data models as
    current. (The GLMM per-set fits are keyed by a hash of the data and would
-   simply not be hit, but they are stale too.) Also move `illnesses.RData` and
+   simply not be hit, but they are stale too.) The cached legacy objects also
+   predate the 2026-11-07 split of the comorbidity count into its own model, so
+   reusing them would silently keep the rank-deficient bundled set. Also move
+   `illnesses.RData` and
    `grouped_illnesses.RData`, which nothing writes any more.
 3. Run the export with `--out data`, then `load.project()`. The munge's
    `cache("dat")`, `cache("dat_long")` and `cache("labels")` overwrite the old
@@ -298,7 +310,10 @@ for all six, the cache is cold and you are in for a multi-hour run.
 so `plyr::mutate` masks `dplyr::mutate`. This silently broke numeric coercion
 of predictors once, leaving ordinal polynomial contrast terms (`.L`, `.Q`,
 `.C`) in the output. Calls in `src/02.regression.r` are explicitly qualified as
-`dplyr::mutate()` for this reason — keep them qualified.
+`dplyr::mutate()` for this reason — keep them qualified. The same applies to
+`munge/01.dat_clean.r`: the `src/` scripts attach tidyverse before
+`reload.project()`, so a bare `rename()` there resolved to `plyr::rename` and
+stopped the munge, although `load.project()` on its own ran clean.
 
 **Label lookups need the legacy names.** The cached `labels` object does not
 contain `mean_n_se` or `intolerance`. Both `src/02.regression.r` and

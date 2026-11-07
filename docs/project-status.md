@@ -13,12 +13,13 @@ and SA8 (see "Data source" in `docs/analysis-pipeline.md`). Verified on the
 and every GLMM and legacy design matrix builds. **No model has been refitted.**
 The cached fits and products in the main checkout still describe the old data.
 
+Resolved 2026-11-07 (owner's rulings): `stopped_due_to_se` is 0 whenever
+`n_se` is 0; `dat` holds only people with a named antidepressant, exactly those
+in `dat_long`; the legacy per-participant block fits the comorbidity count in
+its own model (it was rank deficient bundled with the diagnosis dummies).
+
 Open before a full-cohort refit:
 
-- The legacy psychiatric block bundles `comorbidity_total_count_numeric` with
-  the diagnosis dummies, and under ruling `comorb_groups` it is now exactly their
-  sum, so that design is rank-deficient by one column. A fix would split it out
-  as the GLMM did on 2026-08-05. Needs the owner.
 - Pending in the pipeline: AUDIT for SA8 never-drinkers (missing today), and
   the eating-disorder group / comorbidity count for SA8 people who answered
   neither screen (missing today). The munge passes both through unchanged.
