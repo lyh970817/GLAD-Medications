@@ -395,7 +395,7 @@ dat_long <- med_long %>%
     # routes to binomial glmer.
     remission = factor(remission, levels = 0:1, ordered = TRUE)
   ) %>%
-  rename(ID = person_id) %>%
+  dplyr::rename(ID = person_id) %>%
   relocate(ID, cohort)
 
 cache("dat_long")
@@ -411,7 +411,7 @@ dat <- static_dat %>%
     intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = TRUE),
     first_imprv = factor(first_imprv, levels = 0:5, ordered = TRUE)
   ) %>%
-  rename(ID = person_id) %>%
+  dplyr::rename(ID = person_id) %>%
   relocate(ID, cohort, n_meds)
 
 # Both frames hold exactly the participants with at least one named
