@@ -320,10 +320,16 @@ development extracts, can write to `logs/` instead of over the tracked files.
   discordance, the share with no side effects from any medication, family-
   history coverage and, from the cached models, the largest model N, ICCs, the
   Pearson dispersion of the `n_se` models and the family-history sensitivity
-  comparison. The extract has **no response dates**: the ilovedata store keeps
-  no response metadata (Qualtrics `startDate` is dropped by the live fetch,
-  ilovedata issue 404), so the survey period is reported as unavailable until
-  the pipeline exports one.
+  comparison. The export adds four `Date` columns to the person frame,
+  `response_date_glad`, `response_date_glad_med`, `response_date_glad_fh` and
+  `response_date_glad_sa8_signup`, read from the surveys' Embedded Data
+  `<Block>_StartDate` / `<Block>_EndDate` anchors (`anchor_resolutions_as_of()`,
+  `get_data(sentinel = FALSE)`; the anchors are recorded in
+  `attr(manifest, "response_date_anchors")`). Only the SA8 column is populated
+  (sample range 2024-04-02 to 2024-10-21). The three Baseline-era columns are
+  `NA`: the ilovedata store holds no response date for those surveys (Qualtrics
+  `startDate` is dropped by the live fetch, ilovedata issue 404), so the Baseline
+  survey period is reported as unavailable until the pipeline exports one.
 - A table or number whose model objects are not in `cache/` is skipped with a
   message naming the objects, and the markdown says so; an old HTML file for
   that table is left as it was. Table 0 and the data-only numbers need no
