@@ -541,7 +541,11 @@ nonlong_sef_deps <- c("se_rating")
 nonlong_eff_deps <- c("ben_rating", "n_best", "first_imprv")
 
 nonlong_indeps_sef <- nonlong_indeps_base
-nonlong_indeps_eff <- c(nonlong_indeps_base, list(c("mean_n_se", "se_rating", "intolerance")))
+# One model per side-effect measure, as in cross_outcome_indeps and the manuscript (user ruling 2026-11-08)
+nonlong_indeps_eff <- c(
+  nonlong_indeps_base,
+  list(c("mean_n_se"), c("se_rating"), c("intolerance"))
+)
 
 get_adjusted_nonlong_indeps <- function(indeps_list) {
   discard(indeps_list, ~ length(.x) == 1 && .x %in% nonlong_compete_indeps)

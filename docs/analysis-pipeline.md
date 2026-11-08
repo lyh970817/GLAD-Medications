@@ -226,6 +226,9 @@ are added only for the `effectiveness` and `remission` models, via
 `get_indeps_list_for_dep()`. They are stored as three separate one-element
 vectors, so they are three extra models, not a combined one. The legacy
 equivalents are named `mean_n_se`, `se_rating`, and `intolerance`.
+The legacy per-participant effectiveness models (`ben_rating`, `n_best`,
+`first_imprv`) use the same arrangement: `nonlong_indeps_eff` holds the three
+side-effect measures as three separate one-element sets, not one joint set.
 
 ## Adjusted models
 
