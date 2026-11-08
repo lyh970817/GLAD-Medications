@@ -18,11 +18,13 @@ Resolved 2026-11-07 (owner's rulings): `stopped_due_to_se` is 0 whenever
 in `dat_long`; the legacy per-participant block fits the comorbidity count in
 its own model (it was rank deficient bundled with the diagnosis dummies).
 
+Resolved 2026-11-08 (owner's ruling): `first_imprv` keeps its current rule, the
+duration of the first medication for which a duration was reported. When the
+earliest drug's answer is "Not sure", it comes from a later drug (25 people on
+the development sample); it is not set to missing.
+
 Open before a full-cohort refit:
 
-- `first_imprv` when the earliest drug's improvement duration is "Not sure"
-  (see the 2026-11-07 check below): today the munge takes the next drug with a
-  reported duration. Needs a ruling if that should be missing instead.
 - In `glad_med`, 217 "further symptoms" answers (186 people) are 0 in the old
   extraction and 1 in the pipeline, as are 62 improvement durations (old 0, new
   1–5). Effectiveness agrees on every row, so this is not a row mismatch.
@@ -44,6 +46,45 @@ was "Not sure", so `first_imprv` comes from a later drug, as it did when
 these cells were -777. In this worktree `load.project()` still needs
 `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE R_LIBS=<main checkout>/renv/library/linux-nixos-zokor/R-4.5/x86_64-pc-linux-gnu`,
 because its own renv library holds only `renv`.
+
+## Reporting scripts (branch `ilovedata-migration`, 2026-11-08)
+
+Everything the manuscript quotes now has a producer, so the full-cohort refit
+regenerates all of it (see "Order of work after a refit" in
+`docs/analysis-pipeline.md`):
+
+- `src/04.manuscript_tables.r` adds Table 0 (sample by cohort, `table_0.html`)
+  and Supplementary Tables S1a–S2e (`supp_1a.html` … `supp_2e.html`: every
+  estimate behind Tables 1a–2e) to the eight Results tables. Its formatting
+  helpers moved to `lib/08.table_helpers.r`. It skips, with a message naming
+  the objects, any table whose model objects are not in `cache/`.
+- `src/05.manuscript_numbers.r` writes `docs/manuscript-numbers-current.md`:
+  the inclusion funnel, frame sizes and antidepressants per participant by
+  cohort, known-outcome counts, the outcome distributions, the remission
+  discordance, family-history coverage, and from the cached models the largest
+  N, ICCs, the `n_se` Pearson dispersion and the family-history sensitivity
+  comparison.
+- `fit_glmm()` now records the Pearson dispersion of each Poisson fit, because
+  the cached objects keep no fitted model. Fits made before 2026-11-08 lack it.
+
+Tested on the development extracts only, with output under `logs/` and never
+in the tracked `docs/` files:
+
+- With no model fits (this worktree as it is), both scripts run. Table 0 and
+  the data numbers are produced, and every model-based item is skipped with
+  its message.
+- With every model family fitted on the 638-person sample in a scratch copy of
+  the project, everything is produced. The eight Results tables are
+  byte-identical to the previous `src/04`.
+
+Still open:
+
+- The extract has **no response dates**, so the survey period (C03) cannot be
+  computed. The store keeps no response metadata (ilovedata issue 404).
+- Age and education are not in the extract. Table 0 shows age once the munge
+  carries an `age` column.
+- `docs/manuscript-numbers-current.md` does not exist on the branch. The first
+  full-data run creates it.
 
 ## Where things stand
 

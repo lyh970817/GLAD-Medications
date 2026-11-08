@@ -126,8 +126,11 @@ It is **not a model term** (ruling `wave` = c).
 - `ben_rating` has five levels (1–5); raw 0 is missing.
 - `first_imprv`: "Not sure" on a drug's improvement-duration item arrives
   as -888 (`dont_know`) since snapshot 8. Like every non-answer, it makes that
-  drug's duration missing. `first_imprv` then takes the next drug, by start
-  age, that has a reported duration. It is missing only if no drug has one.
+  drug's duration missing. `first_imprv` is the duration of the first
+  medication, by valid start age and then list order, for which a duration
+  was reported, so after a "Not sure" it comes from a later drug. It is
+  missing only if no drug has one. Settled: the owner kept this rule on
+  2026-11-08.
 - `comorbidity_total_count_numeric` counts the eight ruled groups.
 - The 37 individual illness ticks are gone from the frames (they entered no
   model); the six `score_*` group counts remain. `illnesses` and
@@ -238,7 +241,7 @@ They remain in the fitted model; they are only absent from the reported rows.
 
 ## Products
 
-Everything below is **gitignored**. None of it is in the repository.
+Everything below except `docs/` is **gitignored** and not in the repository.
 
 ### `results/` — workbooks written by `src/02.regression.r`
 
@@ -284,6 +287,62 @@ returns `NULL` for that combination, which is why the run log ends with
 Two files predate the current pipeline and cannot be regenerated:
 `cor_plot.pdf` and `cor_plot_n_relatives_bin.pdf` came from
 `src/01.descriptives.r`, deleted in commit `b03ea78`.
+
+### `docs/` — manuscript tables and numbers (tracked, regenerated in place)
+
+These two scripts read only cached objects and the frames; neither fits a
+model. Their outputs are tracked files that are regenerated in place and left
+uncommitted after a run, like the result workbooks. Both take
+`MANUSCRIPT_OUT_DIR` (default `docs`) so that a dry run, for example on the
+development extracts, can write to `logs/` instead of over the tracked files.
+
+| Script | Writes | From |
+|---|---|---|
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S1a–S2e) | `dat`; `glmm_models`, `glmm_models_cov`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist` where present |
+
+- **Table 0** describes `dat` by cohort and overall: sex, employment,
+  relationship status, PHQ-9, GAD-7, AUDIT, BMI, comorbidity count, family
+  history, number of antidepressants, as n (%) of known values or mean (SD),
+  with a Missing column. Age is shown once the munge carries an `age` column
+  (the pipeline's `dem.selfreport_age` is not exported yet); education is not
+  in the extract.
+- **Supplementary Tables S1a–S2e** are the full output behind Tables 1a–2e, one
+  each, same outcome and model family: every parameter of every predictor set,
+  significant or not, with the unadjusted and adjusted estimate (nominal 95%
+  CI), Bonferroni-corrected p and complete-case N (observations / participants
+  for the GLMM). A dash in the adjusted column marks an adjustment covariate,
+  † a fit that reported a convergence warning. They are new: the manuscript
+  cited them but nothing produced them.
+- **The numbers file** covers the inclusion funnel, frame sizes by cohort,
+  antidepressants per participant, the survey period, known-outcome counts,
+  the outcome distributions per medication and per participant, the remission
+  discordance, the share with no side effects from any medication, family-
+  history coverage and, from the cached models, the largest model N, ICCs, the
+  Pearson dispersion of the `n_se` models and the family-history sensitivity
+  comparison. The extract has **no response dates**: the ilovedata store keeps
+  no response metadata (Qualtrics `startDate` is dropped by the live fetch,
+  ilovedata issue 404), so the survey period is reported as unavailable until
+  the pipeline exports one.
+- A table or number whose model objects are not in `cache/` is skipped with a
+  message naming the objects, and the markdown says so; an old HTML file for
+  that table is left as it was. Table 0 and the data-only numbers need no
+  model.
+- The dispersion is recorded on each Poisson fit by `fit_glmm()` (attribute
+  `dispersion`, since 2026-11-08), because the cached objects keep no fitted
+  model. Fits made before that carry none, and the numbers file says so.
+
+### Order of work after a refit
+
+1. `FORCE_REFIT=TRUE Rscript src/02.regression.r > logs/regression_<date>.log 2>&1`
+   (see "Traps"); check the convergence report at the end of the log.
+2. `Rscript src/04.manuscript_tables.r > logs/tables_<date>.log 2>&1`: Table 0,
+   Tables 1a–2e, S1a–S2e.
+3. `Rscript src/05.manuscript_numbers.r > logs/numbers_<date>.log 2>&1`: the
+   text's numbers. Neither 2 nor 3 depends on the other.
+4. `Rscript src/03.results_plot.r > logs/plots_<date>.log 2>&1`: the figures.
+5. Copy the tables and numbers into the manuscript from
+   `docs/manuscript-tables/*.html` and `docs/manuscript-numbers-current.md`.
 
 ### `reports/` — local only, gitignored in full
 
@@ -339,4 +398,6 @@ These are unresolved analysis decisions, not defects.
   not vice versa. Because every predictor is fitted in its own model, this is a
   reporting choice rather than a statistical one.
 - **Overdispersion.** No negative-binomial check has been run against the
-  Poisson `n_se` model.
+  Poisson `n_se` model. Since 2026-11-08 `fit_glmm()` records the Pearson
+  dispersion of each Poisson fit and `src/05.manuscript_numbers.r` reports it;
+  the full-cohort value awaits the refit.
