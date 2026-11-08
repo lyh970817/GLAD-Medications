@@ -18,6 +18,9 @@ require(ProjectTemplate)
 require(tidyverse)
 reload.project()
 
+# Formatting helpers (fmt_p, clean_label, commafy, td_cell, td_row, ...) are in
+# lib/08.table_helpers.r.
+
 out_dir <- "docs/manuscript-tables"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -67,37 +70,6 @@ estimate_col <- function(tab) {
 p_col <- function(tab) {
   cols <- grep("^p", colnames(tab), value = TRUE)
   cols[1]
-}
-
-# Always returns character. `ifelse()` on a zero-length or all-logical-NA input
-# returns a logical vector, which then makes case_when() below fail with an
-# incompatible-type error rather than producing an empty table.
-#
-# Bonferroni multiplication caps the adjusted p values at 1, and printing that
-# cap as "1.000" reads as a three-decimal measurement rather than as "not close
-# to significant". Anything that rounds to 1.000 is reported as ">0.999"
-# instead, the mirror of the "<0.001" used at the other end; the statement holds
-# for a capped value too, since 1 > 0.999.
-fmt_p <- function(p) {
-  p <- as.numeric(p)
-  out <- rep(NA_character_, length(p))
-  ok <- !is.na(p)
-  if (!any(ok)) {
-    return(out)
-  }
-  pv <- pmin(p[ok], 1)
-  out[ok] <- dplyr::case_when(
-    pv < 0.001 ~ "<0.001",
-    round(pv, 3) >= 1 ~ ">0.999",
-    TRUE ~ formatC(round(pv, 3), format = "f", digits = 3)
-  )
-  out
-}
-
-clean_label <- function(x) {
-  x <- gsub("v\\.s\\.", "vs.", x)
-  x <- gsub("v\\.s\\b", "vs.", x)
-  gsub("\\s+", " ", x)
 }
 
 build_table <- function(unadj_family, adj_family, outcome) {
@@ -166,8 +138,6 @@ build_table <- function(unadj_family, adj_family, outcome) {
   tab
 }
 
-commafy <- function(x) formatC(x, format = "d", big.mark = ",")
-
 n_footnote <- function(tab, level) {
   nr <- attr(tab, "n_range")
   ids <- attr(tab, "n_id_range")
@@ -217,37 +187,6 @@ TABLES <- list(
   list(id = "2e", outcome = "First improvement duration", family = "legacy", effect = "OR",
        title = "Variables significantly associated with first improvement duration")
 )
-
-esc <- function(x) {
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  gsub(">", "&gt;", x, fixed = TRUE)
-}
-
-# The manuscript's existing tables carry formatting that a plain HTML paste does
-# not reproduce: Arial 8pt (w:sz 16) in #1f1f1f rather than the 11pt black a
-# paste defaults to, a bold header row shaded #efefef, 0.5pt #1f1f1f cell
-# borders and 6x9px cell padding. These were read out of the DOCX export of the
-# manuscript (w:rPr / w:tcPr on the first table) so that a regenerated table
-# drops into the document looking like the ones already there.
-CELL_BORDER <- "border:0.5pt solid #1f1f1f;padding:6px 9px;vertical-align:top;"
-CELL_FONT <- "font-family:Arial,sans-serif;font-size:8pt;color:#1f1f1f;"
-HEADER_FILL <- "background-color:#efefef;"
-
-td_cell <- function(text, head = FALSE, italic = FALSE, span = 1) {
-  paste0(
-    '<td style="', CELL_BORDER, if (head) HEADER_FILL else "", '"',
-    if (span > 1) paste0(' colspan="', span, '"') else "", ">",
-    '<p style="margin:0;line-height:1.15;"><span style="', CELL_FONT,
-    if (head) "font-weight:700;" else "",
-    if (italic) "font-style:italic;" else "", '">',
-    esc(text), "</span></p></td>"
-  )
-}
-
-td_row <- function(cells, head = FALSE) {
-  paste0("<tr>", paste0(vapply(cells, td_cell, character(1), head = head), collapse = ""), "</tr>")
-}
 
 md <- c(
   "# Results tables — current numbers",
