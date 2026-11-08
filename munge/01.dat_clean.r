@@ -31,13 +31,30 @@ if (!"se_recorded" %in% names(person_drug)) {
   stop("data/ilovedata_person_drug.rds predates the `se_recorded` column; re-run extract/ilovedata_export.R.")
 }
 
-if (any(person$cohort == "Baseline+SA8")) {
-  # No rule decides which cohort's answers such a person contributes, so refuse
-  # rather than choose silently.
-  stop(
-    sum(person$cohort == "Baseline+SA8"),
-    " people are in both the Baseline and the SA8 surveys; a rule is needed ",
-    "before they can enter the analysis."
+# People who answered both sign-ups (cohort "Baseline+SA8"): Baseline wins
+# (ruling 2026-11-08). The export already applies it: such a person carries
+# their Baseline answers, and their medication rows come only from glad_med.
+# The rule was made for the overlap people seen so far, none of whom took a
+# named antidepressant; if one ever does, they would enter dat_long, so stop
+# and have the rule revisited. "Took a named antidepressant" is the condition
+# WHO ENTERS uses below (`is_tick(took)` in the person-drug frame).
+overlap_ids <- person$person_id[person$cohort == "Baseline+SA8"]
+if (length(overlap_ids) > 0) {
+  overlap_takers <- person_drug %>%
+    filter(person_id %in% overlap_ids, is_tick(took)) %>%
+    distinct(person_id) %>%
+    nrow()
+  if (overlap_takers > 0) {
+    stop(
+      overlap_takers, " of the ", length(overlap_ids), " people who answered ",
+      "both the Baseline and the SA8 sign-ups took a named antidepressant and ",
+      "would enter the analysis; the Baseline-wins rule (2026-11-08) was made ",
+      "for overlap people with no named drug, so it needs revisiting."
+    )
+  }
+  message(
+    length(overlap_ids), " people answered both sign-ups; Baseline answers ",
+    "kept (rule 2026-11-08); none took a named antidepressant"
   )
 }
 
