@@ -113,9 +113,9 @@ format_model <- function(model) {
 
   # Carry the fit's provenance through formatting: the outcome, the sample size
   # at both levels, the convergence warnings and the participant random-intercept
-  # variance. Losing these here is what made a non-converged fit indistinguishable
-  # from a good one downstream.
-  for (a in c("dep", "n", "n_id", "fit_warnings", "converged", "re_var", "icc")) {
+  # variance, and the Pearson dispersion of a Poisson fit. Losing these here is
+  # what made a non-converged fit indistinguishable from a good one downstream.
+  for (a in c("dep", "n", "n_id", "fit_warnings", "converged", "re_var", "icc", "dispersion")) {
     attr(tab, a) <- attr(model, a)
   }
 

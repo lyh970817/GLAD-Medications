@@ -90,6 +90,18 @@ random_intercept_summary <- function(m) {
   list(var = v, icc = if (isTRUE(logit)) v / (v + pi^2 / 3) else NA_real_)
 }
 
+# Pearson dispersion of a count fit: the sum of squared Pearson residuals over
+# the residual degrees of freedom. Near 1 the Poisson variance assumption holds;
+# well above 1 the data are overdispersed and the Poisson standard errors are too
+# small. The fitted model is not kept, so this is the only point at which it can
+# be computed. The Limitations section quotes it for the number of side effects.
+pearson_dispersion <- function(m) {
+  tryCatch(
+    sum(stats::residuals(m, type = "pearson")^2) / stats::df.residual(m),
+    error = function(e) NA_real_
+  )
+}
+
 fit_glmm <- function(dep, indeps, data, family = NULL) {
   # Clean data
   # Ensure ID is included in selection for the random effect
@@ -183,6 +195,8 @@ fit_glmm <- function(dep, indeps, data, family = NULL) {
   # Participant clustering, reported in Methods
   attr(ms, "re_var") <- re$var
   attr(ms, "icc") <- re$icc
+  # Overdispersion check for the Poisson fits; NA for the other families.
+  attr(ms, "dispersion") <- if (engine == "poisson") pearson_dispersion(m) else NA_real_
 
   return(ms)
 }
