@@ -83,8 +83,11 @@ enters:
   1,000-per-survey sample: `dat_long` 1,754 rows, 638 people; `dat` 638 rows.)
 - Both keep only people with a depressive or anxiety disorder
   (`mhd.depression_and_anxiety` known and not "neither"), as before.
-- A person found in both cohorts stops the munge: no rule says which answers
-  they contribute.
+- A person who answered both sign-ups (`cohort` "Baseline+SA8") keeps their
+  Baseline answers (ruling 2026-11-08), as the export already writes them, and
+  their medication rows come only from `glad_med`; the munge reports the count
+  and continues, but stops if any of them took a named antidepressant (3 such
+  people in the full cohort, none a taker).
 
 `cohort` (Baseline / SA8) is a column of both frames for descriptive tables.
 It is **not a model term** (ruling `wave` = c).
@@ -328,11 +331,17 @@ development extracts, can write to `logs/` instead of over the tracked files.
   `response_date_glad_sa8_signup`, read from the surveys' Embedded Data
   `<Block>_StartDate` / `<Block>_EndDate` anchors (`anchor_resolutions_as_of()`,
   `get_data(sentinel = FALSE)`; the anchors are recorded in
-  `attr(manifest, "response_date_anchors")`). Only the SA8 column is populated
-  (sample range 2024-04-02 to 2024-10-21). The three Baseline-era columns are
-  `NA`: the ilovedata store holds no response date for those surveys (Qualtrics
-  `startDate` is dropped by the live fetch, ilovedata issue 404), so the Baseline
-  survey period is reported as unavailable until the pipeline exports one.
+  `attr(manifest, "response_date_anchors")`). In the full-cohort export
+  `response_date_glad_sa8_signup` is populated for every SA8 person
+  (2024-04-02 to 2026-11-07) and `response_date_glad` for 17,099 of the 59,240
+  Baseline people (2020-05-04 to 2025-04-07); the rest of `response_date_glad`
+  is `NA`. `response_date_glad_med` and `response_date_glad_fh` are entirely
+  `NA`: those surveys have no `<Block>_StartDate` / `<Block>_EndDate` fields,
+  and the ilovedata store holds no other response date for them (Qualtrics
+  `startDate` is dropped by the live fetch, ilovedata issue 404). The
+  1,000-per-survey development sample had no Baseline dates at all, only SA8
+  ones (2024-04-02 to 2024-10-21), so a Baseline survey period from
+  `response_date_glad` covers only the people who have one.
 - A table or number whose model objects are not in `cache/` is skipped with a
   message naming the objects, and the markdown says so; an old HTML file for
   that table is left as it was. Table 0 and the data-only numbers need no
