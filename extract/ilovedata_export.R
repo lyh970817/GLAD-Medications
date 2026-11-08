@@ -20,17 +20,19 @@
 # Output, three files in `--out`, which ProjectTemplate auto-loads from data/
 # under the same names:
 #
-#   ilovedata_person.rds       one row per person: cohort, survey membership
-#                              and every person-level variable the analysis
-#                              uses, under its pipeline name
+#   ilovedata_person.rds       one row per person: cohort, survey membership,
+#                              every person-level variable the analysis uses,
+#                              under its pipeline name, and one response date
+#                              per survey (`response_date_<survey>`, Date)
 #   ilovedata_person_drug.rds  one row per person x antidepressant for the 28
 #                              antidepressants the analysis covers, with the
 #                              per-drug items under short names, and
 #                              `se_recorded`, the number of the drug's 30
 #                              side-effect cells with a stored raw value
 #   ilovedata_manifest.rds     provenance: snapshot, pipeline commit, store,
-#                              decisions root, export time, and the anchor
-#                              resolved for each per-drug item and survey
+#                              decisions root, export time, the anchor
+#                              resolved for each per-drug item and survey,
+#                              and the Anchors each response date is read from
 #
 # Cohorts. Baseline people are those in the GLAD sign-up survey `glad`, the
 # standalone medication survey `glad_med` or the Family History survey
@@ -45,6 +47,17 @@
 # codes -777 (seen, not answered), -888 (don't know), -999 (prefer not to
 # answer), -555 (not applicable) and -666 (implausible). Derived Variables
 # carry no status; their NA is the pipeline's own "missing".
+#
+# Response dates. The store keeps no Qualtrics response metadata (RecordedDate,
+# StartDate and EndDate are dropped at extraction; ilovedata issue 404). What
+# it does keep are the surveys' own Embedded Data block timestamps,
+# `<Block>_StartDate` / `<Block>_EndDate`, which the survey flow sets to the
+# current date as a respondent enters and leaves each block, and which bind as
+# ordinary Anchors. `response_date_<survey>` is the latest of these dates for
+# the person in that survey: the last day the response recorded activity, the
+# nearest stand-in for RecordedDate. It is NA where the person did not take the
+# survey, and for every person of a survey whose flow sets no such fields or
+# whose fields hold no values in the store.
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
@@ -355,6 +368,70 @@ bad_cohort <- person %>%
          dem.glad_signup_cohort != cohort)
 if (nrow(bad_cohort)) stop(nrow(bad_cohort), " people whose dem.glad_signup_cohort contradicts their surveys")
 
+# Response dates --------------------------------------------------------------
+
+DATE_SURVEYS <- c(BASELINE_SURVEYS, sa8 = SA8_SURVEY)
+DATE_COLUMN_PATTERN <- "_(Start|End)Date$"
+
+date_anchors <- anchor_resolutions_as_of(con, snapshot) %>%
+  filter(survey_id %in% DATE_SURVEYS, grepl(DATE_COLUMN_PATTERN, response_column_id)) %>%
+  distinct(anchor, survey = survey_id, response_column_id)
+
+date_long <- if (nrow(date_anchors)) {
+  date_groups <- split(unique(date_anchors$anchor),
+                       ceiling(seq_along(unique(date_anchors$anchor)) / 25))
+  map_dfr(date_groups, function(vars) {
+    d <- filter(pull(vars, sentinel = FALSE), survey %in% DATE_SURVEYS)
+    if ("context" %in% names(d)) {
+      if (any(!is.na(d$context))) stop("Response-date Anchors with a Context axis")
+      d <- select(d, -context)
+    }
+    d %>%
+      mutate(across(-c(person_id, survey), as.character)) %>%
+      pivot_longer(-c(person_id, survey), names_to = "anchor", values_to = "value") %>%
+      # An Anchor bound in several surveys counts only in the ones it resolves in.
+      semi_join(date_anchors, by = c("survey", "anchor")) %>%
+      filter(!is.na(value), nzchar(value))
+  })
+} else {
+  tibble(person_id = character(), survey = character(), anchor = character(),
+         value = character())
+}
+
+# Qualtrics writes these as Y-M-D, unpadded ("2024-9-9"); a time, if present,
+# is ignored. Anything else stops the export rather than be dropped silently.
+date_ok <- grepl("^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}( .*)?$", date_long$value)
+if (!all(date_ok)) {
+  stop(sum(!date_ok), " response-date cells are not Y-M-D dates, e.g. in ",
+       paste(head(unique(date_long$anchor[!date_ok]), 3), collapse = ", "))
+}
+date_long$date <- as.Date(sub(" .*$", "", date_long$value), format = "%Y-%m-%d")
+if (anyNA(date_long$date)) stop(sum(is.na(date_long$date)), " response-date cells do not parse")
+
+response_dates <- date_long %>%
+  group_by(person_id, survey) %>%
+  summarise(date = max(date), .groups = "drop") %>%
+  mutate(survey = paste0("response_date_", survey)) %>%
+  pivot_wider(names_from = survey, values_from = date)
+for (s in DATE_SURVEYS) {
+  col <- paste0("response_date_", s)
+  if (!col %in% names(response_dates)) {
+    warning("No response dates in the store for ", s,
+            if (!s %in% date_anchors$survey) " (no <Block>_Start/EndDate fields)" else
+              " (its <Block>_Start/EndDate fields hold no values)")
+    response_dates[[col]] <- as.Date(rep(NA_character_, nrow(response_dates)))
+  }
+}
+response_date_cols <- paste0("response_date_", DATE_SURVEYS)
+
+person <- person %>%
+  left_join(select(response_dates, person_id, all_of(response_date_cols)), by = "person_id")
+# A date only for a survey the person is in.
+for (s in DATE_SURVEYS) {
+  stray <- !is.na(person[[paste0("response_date_", s)]]) & !person[[paste0("in_", s)]]
+  if (any(stray)) stop(sum(stray), " people with a ", s, " response date but no ", s, " response")
+}
+
 # Per-drug items --------------------------------------------------------------
 
 drug_map <- resolve_family(DRUG_ITEMS)
@@ -479,12 +556,16 @@ person_drug <- person_drug %>%
 
 manifest <- tibble(
   key = c("snapshot", "git_commit", "store", "decisions_root", "exported_at",
-          "n_person", "n_person_drug"),
+          "n_person", "n_person_drug", "response_date_columns", "response_date_source",
+          paste0("n_", response_date_cols)),
   value = c(as.character(snapshot), as.character(current_git_commit(pipeline)), store,
             decisions, format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
-            nrow(person), nrow(person_drug))
+            nrow(person), nrow(person_drug), paste(response_date_cols, collapse = ", "),
+            "latest <Block>_StartDate/_EndDate Embedded Data date per person and survey",
+            vapply(response_date_cols, function(v) as.character(sum(!is.na(person[[v]]))), ""))
 )
 attr(manifest, "anchor_map") <- bind_rows(drug_map, imprv_map)
+attr(manifest, "response_date_anchors") <- date_anchors
 
 saveRDS(person, file.path(out_dir, "ilovedata_person.rds"))
 saveRDS(person_drug, file.path(out_dir, "ilovedata_person_drug.rds"))
