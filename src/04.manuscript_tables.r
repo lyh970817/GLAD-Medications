@@ -506,16 +506,13 @@ supp_footnote <- function(tab, spec) {
     },
     "Each predictor set is a separate model: one variable, the levels of employment or of ",
     "relationship status, or the psychiatric diagnosis indicators together",
-    # The side-effect predictors enter only the effectiveness outcomes. The
-    # legacy effectiveness models fit the three of them (mean number, severity,
-    # discontinuation) as one set; the GLMM fits each of them alone.
-    if (!glmm && spec$id %in% c("2b", "2c", "2e")) {
-      ", or the three side-effect measures (mean number, severity rating, discontinuation) together"
-    } else {
-      ""
-    },
     ". ",
-    if (glmm && spec$id %in% c("2a", "2d")) {
+    # The side-effect predictors enter only the effectiveness outcomes. Both the
+    # legacy effectiveness models and the GLMM fit each of the three measures
+    # (mean number, severity, discontinuation) on its own, one model per measure.
+    if (!glmm && spec$id %in% c("2b", "2c", "2e")) {
+      "The mean number of side effects, the side-effect severity rating and treatment discontinuation were each fitted separately (one model per measure). "
+    } else if (glmm && spec$id %in% c("2a", "2d")) {
       "The number of side effects, the severity rating and stopping because of side effects are each a separate model. "
     } else {
       ""

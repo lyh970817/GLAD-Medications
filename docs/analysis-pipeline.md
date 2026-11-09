@@ -401,11 +401,12 @@ contain `mean_n_se` or `intolerance`. Both `src/02.regression.r` and
 `src/03.results_plot.r` add them via a local `labels_extra` block. Omitting it
 silently drops those predictors from grouped plots rather than erroring.
 
-**Plot x-axis is capped at 2.** `lib/07.plot_funcs.r` uses
-`coord_cartesian(xlim = c(NA, 2), clip = "off")`. Ten confidence intervals
-across the current workbooks exceed that bound and are drawn running off the
-panel edge with no truncation indicator; two of them are statistically
-significant. Deliberate zoom, but worth knowing before reading a figure.
+**Plot x-axis is log-scaled and uncapped.** `lib/07.plot_funcs.r` draws the
+estimate axis with `scale_x_log10()` (breaks 0.1 to 4) and no `coord_cartesian`
+cap, so every interval fits inside its panel. The bars are Bonferroni-widened:
+`save_grouped_plots()` in `src/03.results_plot.r` passes the models through
+`bonferroni_ci()` (`lib/03.multi_adjust.r`) after `multi_adjust()`, so colour
+(corrected significance) and interval agree. The axis label says so.
 
 ## Open questions
 
