@@ -21,6 +21,10 @@ labels_extra <- c(
 )
 labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 
+# The within-person and between-person terms of the decomposed medication-level
+# GLMM predictors (lib/09.within_between.r), labelled as in src/02.regression.r.
+labels <- c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))
+
 # Bonferroni factor used by the result workbooks: the legacy workbooks correct
 # across c(sef_models, eff_models) and the GLMM workbooks across glmm_models,
 # which is four outcomes in both cases. Every plot below is corrected by the
@@ -46,6 +50,8 @@ predictor_groups_list <- list(
     "time",
     "start_age",
     "cumulative_med_count",
+    # Their within/between terms, as fitted in the unadjusted GLMMs
+    within_between_terms(c("start_age", "cumulative_med_count")),
     "bmi",
     "audit",
     "pack_year",
@@ -86,6 +92,8 @@ predictor_groups_list <- list(
     "n_se",
     "se_rating",
     "stopped_due_to_se",
+    # their within/between terms, as fitted in the GLMMs
+    within_between_terms(c("n_se", "stopped_due_to_se")),
     # legacy non-longitudinal equivalents
     "mean_n_se",
     "intolerance"

@@ -46,6 +46,10 @@ labels_extra <- c(
 )
 labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 
+# The within-person and between-person terms of the decomposed medication-level
+# predictors (lib/09.within_between.r): "Start Age (within person)", ...
+labels <- c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))
+
 # Match covariate terms in model output, including expanded factor coefficients
 # (e.g., sex -> sexFemale)
 is_covariate_parameter <- function(parameter, covs) {
@@ -255,7 +259,23 @@ glmm_predictor_vars <- unique(unlist(c(
 )))
 
 dat_long_glmm <- dat_long %>%
-  dplyr::mutate(across(any_of(glmm_predictor_vars), coerce_glmm_predictor))
+  dplyr::mutate(across(any_of(glmm_predictor_vars), coerce_glmm_predictor)) %>%
+  # Hybrid within/between decomposition (user ruling 2026-11-09): adds
+  # <X>_within and <X>_between for each medication-level predictor in
+  # WITHIN_BETWEEN_VARS. The undecomposed columns stay, for the adjustment sets.
+  add_within_between(WITHIN_BETWEEN_VARS)
+
+# Each focal set that is a single medication-level predictor X (one that varies
+# within participant: start age, cumulative medication count, number of side
+# effects, stopped because of side effects) is fitted as the two-term set
+# c(X_within, X_between) instead, in the same model, with the random intercept
+# kept. This is applied after get_adjusted_indeps_list_for_dep() has removed the
+# covariates from the focal list, so start age and the cumulative medication
+# count are decomposed only where they are focal (the unadjusted set) and are
+# entered undecomposed wherever they are adjustment covariates.
+hybrid_indeps_for <- function(indeps_list_for) {
+  function(dep) decompose_indeps_list(indeps_list_for(dep), WITHIN_BETWEEN_VARS)
+}
 
 
 # Run Models
@@ -380,7 +400,7 @@ fit_family <- function(deps, indeps_list_for, covs, data) {
 
 # 1. Unadjusted (single predictor set at a time)
 glmm_models <- fit_family(
-  glmm_deps, get_indeps_list_for_dep,
+  glmm_deps, hybrid_indeps_for(get_indeps_list_for_dep),
   covs = NULL, data = dat_long_glmm
 )
 
@@ -388,7 +408,7 @@ glmm_models <- fit_family(
 # The competing set are covariates only here, and are removed from the focal
 # predictor list by get_adjusted_indeps_list_for_dep().
 glmm_models_cov <- fit_family(
-  glmm_deps, function(dep) get_adjusted_indeps_list_for_dep(dep, compete_indeps),
+  glmm_deps, hybrid_indeps_for(function(dep) get_adjusted_indeps_list_for_dep(dep, compete_indeps)),
   covs = c(compete_indeps, "phq9"), data = dat_long_glmm
 )
 
@@ -397,7 +417,7 @@ glmm_models_cov <- fit_family(
 # the observations to complete-case exclusion, which is why it is no longer the
 # main specification.
 glmm_models_cov_famhist <- fit_family(
-  glmm_deps, function(dep) get_adjusted_indeps_list_for_dep(dep, sens_compete_indeps),
+  glmm_deps, hybrid_indeps_for(function(dep) get_adjusted_indeps_list_for_dep(dep, sens_compete_indeps)),
   covs = c(sens_compete_indeps, "phq9"), data = dat_long_glmm
 )
 

@@ -137,6 +137,12 @@ for (stat in c("mean", "sd", "median", "min", "max")) {
     function(i) f(meds_per_person$n_meds[i]),
     paste0(stat, " of the number of named antidepressants per participant (rows of `dat_long` per ID)"))
 }
+# The within-person terms of the hybrid longitudinal models (user ruling
+# 2026-11-09, lib/09.within_between.r) are informed only by participants with
+# two or more medications.
+add_by_cohort("participants_two_or_more_medications", meds_per_person,
+  function(i) pct_of(sum(meds_per_person$n_meds[i] >= 2), length(i)),
+  "Participants in `dat_long` with two or more named antidepressants (of all participants in `dat_long`); only they inform the within-person terms of the longitudinal models")
 
 # ------------------------------------------------------------------------------
 section <- "Survey period"

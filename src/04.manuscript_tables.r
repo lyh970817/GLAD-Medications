@@ -234,6 +234,22 @@ TABLES <- list(
        title = "Variables significantly associated with first improvement duration")
 )
 
+# Medication-level predictors in the longitudinal models are split into a
+# within-person and a between-persons term (user ruling 2026-11-09; see
+# lib/09.within_between.r). Both rows carry the predictor's label with
+# "(within person)" / "(between persons)" appended.
+WITHIN_BETWEEN_NOTE <- paste0(
+  "Within person / between persons: a predictor that varies between a participant's medications ",
+  "is split into the medication's deviation from the participant's own mean (within person) and ",
+  "that mean (between persons), fitted together in one model with the participant random intercept; ",
+  "the within-person term is informed only by participants with two or more medications. ",
+  "Start age and cumulative medication count are adjustment covariates in the adjusted models and ",
+  "enter them undecomposed."
+)
+is_within_between_row <- function(parameter) {
+  grepl("\\((within person|between persons)\\)$", parameter)
+}
+
 ADJUSTMENT_SETS <- c(
   glmm = "sex, starting age, cumulative medication count and PHQ-9",
   legacy = "sex, average starting age and the number of psychiatric diagnosis types in the immediate family"
@@ -420,6 +436,9 @@ for (spec in TABLES) {
       formatC(median(icc, na.rm = TRUE), format = "f", digits = 2), "."
     )
   }
+  if (spec$family == "glmm" && any(is_within_between_row(tab$Parameter))) {
+    foot <- paste0(foot, " ", WITHIN_BETWEEN_NOTE)
+  }
 
   header <- c("Parameter", paste0(spec$effect, " [95% CI] (adjusted)"), "p (adjusted)")
   body <- select(tab, Parameter, estimate, pval)
@@ -530,6 +549,7 @@ supp_footnote <- function(tab, spec) {
     "N is the complete-case sample of each model",
     if (glmm) " (medication observations / participants)" else " (participants)", ". ",
     "–: adjustment covariate, so no adjusted estimate of its own.",
+    if (glmm && any(is_within_between_row(tab$Parameter))) paste0(" ", WITHIN_BETWEEN_NOTE) else "",
     if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
     if (sum(failed)) {
       paste0(

@@ -251,6 +251,47 @@ The legacy per-participant effectiveness models (`ben_rating`, `n_best`,
 `first_imprv`) use the same arrangement: `nonlong_indeps_eff` holds the three
 side-effect measures as three separate one-element sets, not one joint set.
 
+## Within/between decomposition (hybrid GLMMs)
+
+Since 2026-11-09 (user ruling), every **focal predictor that varies within a
+participant** in `dat_long` is split, in the same model, into two terms
+(`lib/09.within_between.r`):
+
+- `X_between`: the participant's mean of X over their medications with a
+  known X;
+- `X_within`: X minus that mean.
+
+The participant random intercept is kept. The mean is taken over every row of
+the frame being fitted with a known X, not over each model's complete-case
+rows. The within-person term is informed only by participants with two or more
+medications (73.8% of `dat_long` participants on the full cohort; reported by
+`src/05.manuscript_numbers.r` as `participants_two_or_more_medications_*`).
+
+Which predictors vary within participant was checked on the full-cohort
+`dat_long`: `start_age`, `cumulative_med_count`, `n_se` and
+`stopped_due_to_se`. Everything else, `se_rating` included, is constant
+within a person. So the decomposed sets are:
+
+| Set | Decomposed focal predictors |
+|---|---|
+| unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+
+`start_age` and `cumulative_med_count` also vary within person, but in the
+adjusted sets they are **adjustment covariates and stay as they are**: they are
+entered undecomposed, and only focal sets are decomposed.
+`decompose_indeps_list()` runs after `get_adjusted_indeps_list_for_dep()` has
+removed the covariates from the focal list, so a decomposed two-term set cannot
+slip past that filter.
+
+The two terms carry the predictor's label with " (within person)" and
+" (between persons)" appended, e.g. "Number of Side Effects (within person)".
+`src/03.results_plot.r` puts both in the predictor's own panel group, and
+`src/04.manuscript_tables.r` shows both rows in the supplementary tables (and
+whichever is significant in the Results tables), with a footnote. The
+legacy per-participant models are unaffected: their predictors are constant
+within person by construction.
+
 ## Adjusted models
 
 GLMM adjustment set: `sex`, `start_age`, `cumulative_med_count`, `phq9`; the
@@ -262,6 +303,8 @@ itself, and `drop_covariate_terms()` removes them from the output tables
 (matching on prefix, so expanded factor terms like `sexFemale` are caught too).
 
 They remain in the fitted model; they are only absent from the reported rows.
+The GLMM covariates `start_age` and `cumulative_med_count` vary within person
+and are entered undecomposed (see "Within/between decomposition").
 
 ## Products
 
