@@ -1,3 +1,26 @@
+# Breaks for the log-scaled estimate axis, adapted to each panel's range
+# (`lims` are the panel limits on the original scale, CI ends included). Wide
+# panels keep the fixed ratio set 0.1, 0.25, 0.5, 1, 2, 4; a panel where fewer
+# than three of those fall inside its range (for example estimates between
+# 0.85 and 0.99, which would show only "1") gets pretty breaks over its own
+# range instead, so every panel has at least three labelled ticks.
+adaptive_ratio_breaks <- function(lims) {
+  fixed <- c(0.1, 0.25, 0.5, 1, 2, 4)
+  inside <- fixed[fixed >= lims[1] & fixed <= lims[2]]
+  if (length(inside) >= 3) {
+    return(inside)
+  }
+  b <- scales::breaks_pretty(n = 5)(lims)
+  b[b > 0]
+}
+
+# Plain numbers: 0.85, 0.9, 0.95, 1 (no trailing zeros, no scientific format).
+plain_number_labels <- function(x) {
+  out <- format(round(x, 4), drop0trailing = TRUE, trim = TRUE, scientific = FALSE)
+  out[is.na(x)] <- NA
+  out
+}
+
 plot_models_publication <- function(models) {
   # --- 1. DATA EXTRACTION & TIDYING ---
   extract_model_data <- function(df, outcome_label) {
@@ -105,7 +128,7 @@ plot_models_publication <- function(models) {
     # to be capped at 2 with `coord_cartesian(xlim = c(NA, 2))`, which drew a
     # handful of intervals running off the panel edge with no truncation marker.
     # Every interval now fits inside its panel.
-    scale_x_log10(breaks = c(0.1, 0.25, 0.5, 1, 2, 4), labels = c("0.1", "0.25", "0.5", "1", "2", "4")) +
+    scale_x_log10(breaks = adaptive_ratio_breaks, labels = plain_number_labels) +
     # Wrap long predictor labels (over 32 characters) onto two lines, so one
     # long label such as "Treatment discontinuation (per 10% of antidepressants
     # stopped)" does not squeeze the plot area. Only the displayed text is
