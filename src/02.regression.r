@@ -40,9 +40,9 @@ label_or_name <- function(vars) {
 
 labels_extra <- c(
   mean_n_se = "Mean number of side effects",
-  intolerance = "Treatment discontinuation",
+  intolerance = "Treatment discontinuation (per 10% of antidepressants stopped)",
   first_imprv = "First improvement duration",
-  time = "Total duration on antidepressants"
+  time = "Total duration (years)"
 )
 labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 

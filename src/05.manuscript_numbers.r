@@ -228,8 +228,7 @@ legacy_outcomes <- list(
   ben_rating = list(label = "Benefit rating", levels = 1:5, names = c("1", "2", "3", "4", "5")),
   n_best = list(label = "Number of best aspects", levels = 0:8, names = as.character(0:8)),
   first_imprv = list(label = "First improvement duration", levels = 0:5,
-    names = c("0 (no improvement)", "1 (under a month)", "2", "3", "4", "5 (more than 12 months)")),
-  intolerance = list(label = "Treatment discontinuation band", levels = 1:3, names = c("1 (lowest)", "2", "3 (highest)"))
+    names = c("0 (no improvement)", "1 (under a month)", "2", "3", "4", "5 (more than 12 months)"))
 )
 for (v in names(legacy_outcomes)) {
   o <- legacy_outcomes[[v]]
@@ -239,6 +238,23 @@ for (v in names(legacy_outcomes)) {
   level_shares(v, x, dat, as.list(o$levels), setNames(as.character(o$levels), o$names), o$label,
     unit = "participants")
 }
+# Treatment discontinuation and total duration are continuous predictors
+# (user ruling 2026-11-09): `intolerance` is the proportion of antidepressants
+# stopped because of side effects x 10, `time` the total duration in years.
+add_by_cohort("intolerance_known", dat, function(i) pct_of(sum(!is.na(dat$intolerance[i])), length(i)),
+  "Participants with a known treatment discontinuation proportion (of all in `dat`)")
+add_by_cohort("intolerance_mean_pct", dat, function(i) fmt_num(10 * mean(dat$intolerance[i], na.rm = TRUE), 1),
+  "Mean percentage of a participant's antidepressants stopped because of side effects (of participants with a known value)")
+add_by_cohort("intolerance_any", dat, function(i) {
+  x <- dat$intolerance[i]
+  pct_of(sum(x > 0, na.rm = TRUE), sum(!is.na(x)))
+}, "Participants who stopped at least one antidepressant because of side effects (of participants with a known value)")
+add_by_cohort("time_known", dat, function(i) pct_of(sum(!is.na(dat$time[i])), length(i)),
+  "Participants with a known total duration on antidepressants (of all in `dat`)")
+add_by_cohort("time_median_years", dat, function(i) {
+  q <- stats::quantile(dat$time[i], c(0.5, 0.25, 0.75), na.rm = TRUE)
+  paste0(fmt_num(q[[1]], 1), " (IQR ", fmt_num(q[[2]], 1), "-", fmt_num(q[[3]], 1), ")")
+}, "Median total duration on antidepressants in years, summing each drug's duration band at its midpoint (more than 4 years counted as 5)")
 add_by_cohort("mean_n_se_mean", dat, function(i) fmt_num(mean(dat$mean_n_se[i], na.rm = TRUE)),
   "Mean of the per-participant mean number of side effects (over drugs with a known count)")
 add_by_cohort("mean_n_se_median", dat, function(i) fmt_num(median(dat$mean_n_se[i], na.rm = TRUE)),

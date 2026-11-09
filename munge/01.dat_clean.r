@@ -210,6 +210,14 @@ med_long <- med_long %>%
 # ==============================================================================
 # PER-PARTICIPANT VARIABLES
 # ==============================================================================
+# Duration taken, by band code -> months at the band midpoint: 1 = 1-3 months
+# (2), 2 = 4-6 months (5), 3 = 7-12 months (9.5), 4 = 1-2 years (18),
+# 5 = 2-3 years (30), 6 = 3-4 years (42), 7 = more than 4 years (60). The top
+# band is open; its value assumes 5 years (user ruling 2026-11-09). Non-answers
+# (-777, -555) are already NA in length_taken.
+duration_band_months <- c(2, 5, 9.5, 18, 30, 42, 60)
+stopifnot(all(is.na(med_long$length_taken) | med_long$length_taken %in% 1:7))
+
 # Medication summaries over a participant's taken drugs.
 med_person <- tibble(person_id = takers) %>%
   left_join(
@@ -230,10 +238,15 @@ med_person <- tibble(person_id = takers) %>%
         } else {
           NA_real_
         },
-        # Total duration on antidepressants: the sum of the duration codes
-        # (1 = 1-3 months ... 7 = more than 4 years) over the drugs where one
-        # was given; missing when none was.
-        time = if (any(!is.na(length_taken))) sum(length_taken, na.rm = TRUE) else NA_real_,
+        # Total duration on antidepressants, in years (user ruling 2026-11-09):
+        # each drug's duration code is converted to months at its band
+        # midpoint and summed over the drugs where one was given; missing when
+        # none was. See duration_band_months above for the bands.
+        time = if (any(!is.na(length_taken))) {
+          sum(duration_band_months[length_taken], na.rm = TRUE) / 12
+        } else {
+          NA_real_
+        },
         # Average age at starting an antidepressant, in decades, over valid ages.
         avg_start_age = if (any(!is.na(start_age_valid))) {
           mean(start_age_valid, na.rm = TRUE) / 10
@@ -423,9 +436,12 @@ cache("dat_long")
 dat <- static_dat %>%
   left_join(select(med_person, -avg_start_age), by = "person_id") %>%
   dplyr::mutate(
-    # `intolerance` enters the models as an ordered three-level variable cut
-    # into equal-width bands of the observed proportion, as before.
-    intolerance = cut(intolerance, 3, labels = 1:3, ordered_result = TRUE),
+    # `intolerance` enters the models as the raw proportion of the
+    # participant's antidepressants stopped because of side effects, scaled
+    # per 10 percentage points (0-10), so its odds ratio is per extra 10% of
+    # antidepressants stopped (user ruling 2026-11-09; it used to be cut into
+    # three equal-width bands).
+    intolerance = intolerance * 10,
     first_imprv = factor(first_imprv, levels = 0:5, ordered = TRUE)
   ) %>%
   dplyr::rename(ID = person_id) %>%

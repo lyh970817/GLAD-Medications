@@ -4,8 +4,15 @@
 # which is why nothing recorded how the bracket convention or the N footnotes
 # were derived. This script regenerates all of them from the cached model
 # objects, so the tables in the document can be reproduced and re-checked. It
-# also builds the sample description (Table 0, from `dat`) and the
-# supplementary tables S1a-S2e (every estimate behind each Results table).
+# also builds the sample description (Table 1, from `dat`) and the
+# supplementary tables S2a-S3e (every estimate behind each Results table).
+#
+# Numbering: the manuscript renumbered its tables on 2026-11-09 (sample table
+# 0 -> 1, side-effect tables 1a-1c -> 2a-2c, effectiveness tables 2a-2e ->
+# 3a-3e, supplementary S1a-S2e -> S2a-S3e). Only the displayed captions
+# follow it: `label` in TABLES is the manuscript number, `id` the file name
+# and the key the footnote rules use, so table_0.html, table_1a.html,
+# supp_1a.html and so on keep their names.
 #
 # Convention for the Results tables, matching the existing manuscript:
 #   - one row per parameter significant after Bonferroni correction in the
@@ -15,7 +22,8 @@
 #
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
 # HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
-# supp_1a-2e). Set MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
+# supp_1a-2e; file names predate the renumbering, see above). Set
+# MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
 #
 # A table whose model objects are not in cache/ (src/02.regression.r has not
@@ -204,25 +212,25 @@ n_footnote <- function(tab, level) {
 }
 
 TABLES <- list(
-  list(id = "1a", outcome = "Number of Side Effects", family = "glmm", effect = "RR",
+  list(id = "1a", label = "2a", outcome = "Number of Side Effects", family = "glmm", effect = "RR",
        title = "Variables significantly associated with the number of side effects"),
-  list(id = "1b", outcome = "Side effect severity rating", family = "legacy", effect = "OR",
+  list(id = "1b", label = "2b", outcome = "Side effect severity rating", family = "legacy", effect = "OR",
        title = "Variables significantly associated with side effect severity rating"),
-  list(id = "1c", outcome = "Stopped due to Side Effects", family = "glmm", effect = "OR",
+  list(id = "1c", label = "2c", outcome = "Stopped due to Side Effects", family = "glmm", effect = "OR",
        title = "Variables significantly associated with stopping a medication because of side effects"),
-  list(id = "2a", outcome = "Effectiveness", family = "glmm", effect = "OR",
+  list(id = "2a", label = "3a", outcome = "Effectiveness", family = "glmm", effect = "OR",
        title = "Variables significantly associated with effectiveness"),
-  list(id = "2b", outcome = "Benefit rating", family = "legacy", effect = "OR",
+  list(id = "2b", label = "3b", outcome = "Benefit rating", family = "legacy", effect = "OR",
        title = "Variables significantly associated with benefit rating"),
-  list(id = "2c", outcome = "Number of best aspects", family = "legacy", effect = "OR",
+  list(id = "2c", label = "3c", outcome = "Number of best aspects", family = "legacy", effect = "OR",
        title = "Variables significantly associated with the number of best aspects"),
   # "Occurrence of remission" was participant-level wording for what is in fact a
   # per-medication outcome: remission is recorded for each antidepressant, and
   # participants who took more than one often differ across them (the share is
   # computed by src/05.manuscript_numbers.r).
-  list(id = "2d", outcome = "Remission", family = "glmm", effect = "OR",
+  list(id = "2d", label = "3d", outcome = "Remission", family = "glmm", effect = "OR",
        title = "Variables significantly associated with remission on a medication"),
-  list(id = "2e", outcome = "First improvement duration", family = "legacy", effect = "OR",
+  list(id = "2e", label = "3e", outcome = "First improvement duration", family = "legacy", effect = "OR",
        title = "Variables significantly associated with first improvement duration")
 )
 
@@ -234,7 +242,7 @@ ADJUSTMENT_SETS <- c(
 md <- c(
   "# Manuscript tables — current numbers",
   "",
-  paste0("Generated ", format(Sys.Date()), " by `src/04.manuscript_tables.r`. Table 0"),
+  paste0("Generated ", format(Sys.Date()), " by `src/04.manuscript_tables.r`. Table 1"),
   "describes `dat`; the Results tables and the supplementary tables come from the",
   "cached model objects, under the **combination** decision: longitudinal (GLMM)",
   "estimates for the four outcomes the GLMM covers, per-participant (legacy)",
@@ -249,7 +257,7 @@ md <- c(
 )
 
 # ------------------------------------------------------------------------------
-# Table 0: sample description by survey cohort
+# Table 1 (file table_0.html): sample description by survey cohort
 # ------------------------------------------------------------------------------
 # Counts are n (% of those with a known value); continuous variables are mean
 # (SD). The Missing column is the number (and share) of all participants in
@@ -379,26 +387,26 @@ writeLines(
 )
 md <- c(
   md, "",
-  "#### Table 0: Sample characteristics by survey cohort",
+  "#### Table 1: Sample characteristics by survey cohort",
   sample_foot,
   md_table(sample_header, sample_body)
 )
-message("  wrote table 0 (", nrow(sample_body), " rows)")
+message("  wrote table 1 (table_0.html, ", nrow(sample_body), " rows)")
 
 # ------------------------------------------------------------------------------
-# Tables 1a-2e: significant associations
+# Tables 2a-3e (files table_1a-2e): significant associations
 # ------------------------------------------------------------------------------
 for (spec in TABLES) {
   fam <- families[[spec$family]]
   if (is.null(fam)) {
-    md <- c(md, "", paste0("#### Table ", spec$id, ": ", spec$title), skip_note(spec$family))
+    md <- c(md, "", paste0("#### Table ", spec$label, ": ", spec$title), skip_note(spec$family))
     next
   }
 
   tab <- build_table(fam$unadj, fam$adj, spec$outcome)
 
   if (is.null(tab)) {
-    message("!! no table for ", spec$id, " (", spec$outcome, ")")
+    message("!! no table for ", spec$label, " (", spec$outcome, ")")
     next
   }
 
@@ -418,17 +426,17 @@ for (spec in TABLES) {
 
   md <- c(
     md, "",
-    paste0("#### Table ", spec$id, ": ", spec$title),
+    paste0("#### Table ", spec$label, ": ", spec$title),
     foot,
     md_table(header, body)
   )
 
   writeLines(html_table(header, body, foot), file.path(out_dir, paste0("table_", spec$id, ".html")))
-  message("  wrote table ", spec$id, " (", nrow(tab), " rows)")
+  message("  wrote table ", spec$label, " (table_", spec$id, ".html, ", nrow(tab), " rows)")
 }
 
 # ------------------------------------------------------------------------------
-# Supplementary Tables S1a-S2e: every estimate behind each Results table
+# Supplementary Tables S2a-S3e (files supp_1a-2e): every estimate behind each Results table
 # ------------------------------------------------------------------------------
 # One supplementary table per Results table, with the same outcome and model
 # family: every parameter of every predictor set, significant or not, with the
@@ -536,7 +544,7 @@ supp_footnote <- function(tab, spec) {
 
 supp_index <- character()
 for (spec in TABLES) {
-  sid <- paste0("S", spec$id)
+  sid <- paste0("S", spec$label)
   title <- sub("^Variables significantly associated with", "All modelled associations with", spec$title)
   fam <- families[[spec$family]]
   if (is.null(fam)) {

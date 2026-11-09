@@ -118,6 +118,11 @@ It is **not a model term** (ruling `wave` = c).
   for gate No and the "No side effects" tick; it is now also 0 for a recorded
   checklist with nothing ticked. `intolerance` counts unknown drugs in its
   denominator as before and is missing only when no drug has a known status.
+- `intolerance` (ruling 2026-11-09) enters the models as the raw proportion
+  of the participant's antidepressants stopped because of side effects,
+  multiplied by 10, so its odds ratio is per extra 10% of antidepressants
+  stopped. It is no longer cut into three equal-width bands. Label:
+  "Treatment discontinuation (per 10% of antidepressants stopped)".
 - `comorbidity_total_count_numeric` is, under ruling `comorb_groups`, an exact
   linear combination of the ten diagnosis dummies (dep/anx + bipolar/psychotic
   + ED + OCD + PD + ADHD + ASD). Both pipelines therefore fit it in its own
@@ -143,6 +148,13 @@ It is **not a model term** (ruling `wave` = c).
   antidepressant".
 - `time` is missing, rather than 0, for a taker who gave no duration for any
   drug.
+- `time` (ruling 2026-11-09) is the total duration on antidepressants in
+  **years**: each drug's duration band is converted to months at its midpoint
+  (1–3 months → 2, 4–6 → 5, 7–12 → 9.5, 1–2 years → 18, 2–3 → 30, 3–4 → 42)
+  and summed over the drugs with an answer, then divided by 12. The top band,
+  "more than 4 years", is open; it is **assumed to be 5 years (60 months)**.
+  It used to be the sum of the band codes 1–7. Its odds ratio is per
+  additional year on antidepressants. Label: "Total duration (years)".
 - The leftover join columns of the old `dat_long` (`sample.x`, `startDate.y`,
   the per-drug improvement columns, ...) are gone.
 
@@ -304,16 +316,23 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S1a–S2e) | `dat`; `glmm_models`, `glmm_models_cov`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e) | `dat`; `glmm_models`, `glmm_models_cov`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
 | `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist` where present |
 
-- **Table 0** describes `dat` by cohort and overall: sex, employment,
+- **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
+  the sample table is Table 1 (was 0), the side-effect tables 2a–2c (were
+  1a–1c), the effectiveness tables 3a–3e (were 2a–2e), and the supplementary
+  tables S2a–S3e (were S1a–S2e). `src/04.manuscript_tables.r` writes the new
+  numbers into the captions (`label` in `TABLES`); the HTML files keep their
+  old names (`id`), so `table_1a.html` is Table 2a and `supp_2e.html` is
+  Supplementary Table S3e.
+- **Table 1** (`table_0.html`) describes `dat` by cohort and overall: sex, employment,
   relationship status, PHQ-9, GAD-7, AUDIT, BMI, comorbidity count, family
   history, number of antidepressants, as n (%) of known values or mean (SD),
   with a Missing column. Age is shown once the munge carries an `age` column
   (the pipeline's `dem.selfreport_age` is not exported yet); education is not
   in the extract.
-- **Supplementary Tables S1a–S2e** are the full output behind Tables 1a–2e, one
+- **Supplementary Tables S2a–S3e** are the full output behind Tables 2a–3e, one
   each, same outcome and model family: every parameter of every predictor set,
   significant or not, with the unadjusted and adjusted estimate (nominal 95%
   CI), Bonferroni-corrected p and complete-case N (observations / participants
@@ -344,7 +363,7 @@ development extracts, can write to `logs/` instead of over the tracked files.
   `response_date_glad` covers only the people who have one.
 - A table or number whose model objects are not in `cache/` is skipped with a
   message naming the objects, and the markdown says so; an old HTML file for
-  that table is left as it was. Table 0 and the data-only numbers need no
+  that table is left as it was. Table 1 and the data-only numbers need no
   model.
 - The dispersion is recorded on each Poisson fit by `fit_glmm()` (attribute
   `dispersion`, since 2026-11-08), because the cached objects keep no fitted
@@ -354,8 +373,8 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 1. `FORCE_REFIT=TRUE Rscript src/02.regression.r > logs/regression_<date>.log 2>&1`
    (see "Traps"); check the convergence report at the end of the log.
-2. `Rscript src/04.manuscript_tables.r > logs/tables_<date>.log 2>&1`: Table 0,
-   Tables 1a–2e, S1a–S2e.
+2. `Rscript src/04.manuscript_tables.r > logs/tables_<date>.log 2>&1`: Table 1,
+   Tables 2a–3e, S2a–S3e.
 3. `Rscript src/05.manuscript_numbers.r > logs/numbers_<date>.log 2>&1`: the
    text's numbers. Neither 2 nor 3 depends on the other.
 4. `Rscript src/03.results_plot.r > logs/plots_<date>.log 2>&1`: the figures.
@@ -397,9 +416,14 @@ of predictors once, leaving ordinal polynomial contrast terms (`.L`, `.Q`,
 stopped the munge, although `load.project()` on its own ran clean.
 
 **Label lookups need the legacy names.** The cached `labels` object does not
-contain `mean_n_se` or `intolerance`. Both `src/02.regression.r` and
+contain `mean_n_se`, `intolerance` or `time`. Both `src/02.regression.r` and
 `src/03.results_plot.r` add them via a local `labels_extra` block. Omitting it
-silently drops those predictors from grouped plots rather than erroring.
+silently drops those predictors from grouped plots rather than erroring. The
+two blocks must agree: labels are baked into the cached model objects when
+they are fitted, so a label changed in one script only reaches the tables
+after those model sets are refitted, and `src/03.results_plot.r` groups
+predictors by matching the same text. `reports/compare_legacy_glmm_results.R`
+(local only) also keys on the label text in `parameter_aliases`.
 
 **Plot x-axis is log-scaled and uncapped.** `lib/07.plot_funcs.r` draws the
 estimate axis with `scale_x_log10()` (breaks 0.1 to 4) and no `coord_cartesian`
