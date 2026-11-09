@@ -229,21 +229,25 @@ med_person <- tibble(person_id = takers) %>%
         # missing count is left out of the mean (ruling A2).
         mean_n_se = if (any(!is.na(n_se))) mean(n_se, na.rm = TRUE) else NA_real_,
         # Proportion of the participant's antidepressants stopped because of
-        # side effects, among participants with at least one known stop
-        # status (answered, or 0 because n_se is 0). As before,
-        # every taken drug counts in the denominator; a drug whose status is
-        # unknown adds nothing to the numerator.
+        # side effects, among the drugs whose stop status is known (answered,
+        # or 0 because n_se is 0) (user ruling 2026-11-09, afternoon): the
+        # numerator is the drugs stopped because of side effects, the
+        # denominator the drugs with a known status, so a drug whose status is
+        # unknown is in neither. It used to count every taken drug in the
+        # denominator. Missing when no drug has a known status.
         intolerance = if (any(!is.na(stopped_due_to_se))) {
-          sum(stopped_due_to_se == 1, na.rm = TRUE) / n()
+          sum(stopped_due_to_se == 1, na.rm = TRUE) / sum(!is.na(stopped_due_to_se))
         } else {
           NA_real_
         },
-        # Total duration on antidepressants, in years (user ruling 2026-11-09):
-        # each drug's duration code is converted to months at its band
-        # midpoint and summed over the drugs where one was given; missing when
-        # none was. See duration_band_months above for the bands.
+        # Mean duration per antidepressant, in years (user ruling 2026-11-09,
+        # afternoon): each drug's duration code is converted to months at its
+        # band midpoint and averaged over the drugs where one was given, then
+        # divided by 12; missing when none was. It used to be the sum over
+        # those drugs (total duration). See duration_band_months above for the
+        # bands.
         time = if (any(!is.na(length_taken))) {
-          sum(duration_band_months[length_taken], na.rm = TRUE) / 12
+          mean(duration_band_months[length_taken], na.rm = TRUE) / 12
         } else {
           NA_real_
         },
@@ -437,10 +441,11 @@ dat <- static_dat %>%
   left_join(select(med_person, -avg_start_age), by = "person_id") %>%
   dplyr::mutate(
     # `intolerance` enters the models as the raw proportion of the
-    # participant's antidepressants stopped because of side effects, scaled
-    # per 10 percentage points (0-10), so its odds ratio is per extra 10% of
-    # antidepressants stopped (user ruling 2026-11-09; it used to be cut into
-    # three equal-width bands).
+    # participant's antidepressants with a known stop status that were stopped
+    # because of side effects, scaled per 10 percentage points (0-10), so its
+    # odds ratio is per extra 10% of antidepressants stopped (user rulings
+    # 2026-11-09; it used to be cut into three equal-width bands, and its
+    # denominator used to be every taken drug).
     intolerance = intolerance * 10,
     first_imprv = factor(first_imprv, levels = 0:5, ordered = TRUE)
   ) %>%

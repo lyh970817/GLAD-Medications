@@ -12,7 +12,7 @@ labels_extra <- c(
   mean_n_se = "Mean number of side effects",
   intolerance = "Treatment discontinuation (per 10% of antidepressants stopped)",
   first_imprv = "First improvement duration",
-  time = "Total duration (years)",
+  time = "Mean duration per antidepressant (years)",
   # Medication-episode analogues of `avg_start_age` and `time`. Only the GLMM
   # has these; without them the GLMM grouped panels silently drop both, the
   # same way the legacy panels used to drop mean_n_se and intolerance.

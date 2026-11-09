@@ -116,13 +116,16 @@ It is **not a model term** (ruling `wave` = c).
   own status; missing where `n_se` is missing; otherwise the answer, and
   missing when the item was seen and not answered. This matches the old values
   for gate No and the "No side effects" tick; it is now also 0 for a recorded
-  checklist with nothing ticked. `intolerance` counts unknown drugs in its
-  denominator as before and is missing only when no drug has a known status.
-- `intolerance` (ruling 2026-11-09) enters the models as the raw proportion
+  checklist with nothing ticked.
+- `intolerance` (rulings 2026-11-09) enters the models as the raw proportion
   of the participant's antidepressants stopped because of side effects,
   multiplied by 10, so its odds ratio is per extra 10% of antidepressants
-  stopped. It is no longer cut into three equal-width bands. Label:
-  "Treatment discontinuation (per 10% of antidepressants stopped)".
+  stopped. It is no longer cut into three equal-width bands. The numerator is
+  the drugs with `stopped_due_to_se` = 1; the **denominator is the drugs whose
+  `stopped_due_to_se` is known** (not missing), not every taken drug as
+  before, so a drug with an unknown status is in neither. It is missing when
+  no drug has a known status. Label: "Treatment discontinuation (per 10% of
+  antidepressants stopped)".
 - `comorbidity_total_count_numeric` is, under ruling `comorb_groups`, an exact
   linear combination of the ten diagnosis dummies (dep/anx + bipolar/psychotic
   + ED + OCD + PD + ADHD + ASD). Both pipelines therefore fit it in its own
@@ -148,13 +151,16 @@ It is **not a model term** (ruling `wave` = c).
   antidepressant".
 - `time` is missing, rather than 0, for a taker who gave no duration for any
   drug.
-- `time` (ruling 2026-11-09) is the total duration on antidepressants in
-  **years**: each drug's duration band is converted to months at its midpoint
+- `time` (rulings 2026-11-09) is the **mean duration per antidepressant in
+  years**: each drug's duration band is converted to months at its midpoint
   (1–3 months → 2, 4–6 → 5, 7–12 → 9.5, 1–2 years → 18, 2–3 → 30, 3–4 → 42)
-  and summed over the drugs with an answer, then divided by 12. The top band,
-  "more than 4 years", is open; it is **assumed to be 5 years (60 months)**.
-  It used to be the sum of the band codes 1–7. Its odds ratio is per
-  additional year on antidepressants. Label: "Total duration (years)".
+  and averaged over the drugs with an answer, then divided by 12. The top
+  band, "more than 4 years", is open; it is **assumed to be 5 years (60
+  months)**. It was first the sum of the band codes 1–7, then (morning of
+  2026-11-09) the sum of the midpoints, i.e. the total duration. Its odds
+  ratio is per additional year on each antidepressant. Label: "Mean duration
+  per antidepressant (years)"; `src/05.manuscript_numbers.r` reports the
+  median and IQR of the per-participant mean (`mean_duration_*` keys).
 - The leftover join columns of the old `dat_long` (`sample.x`, `startDate.y`,
   the per-drug improvement columns, ...) are gone.
 
