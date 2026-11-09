@@ -129,11 +129,16 @@ plot_models_publication <- function(models) {
     # handful of intervals running off the panel edge with no truncation marker.
     # Every interval now fits inside its panel.
     scale_x_log10(breaks = adaptive_ratio_breaks, labels = plain_number_labels) +
-    # Wrap long predictor labels (over 32 characters) onto two lines, so one
-    # long label such as "Treatment discontinuation (per 10% of antidepressants
-    # stopped)" does not squeeze the plot area. Only the displayed text is
-    # wrapped; the factor levels, which the grouping matches on, are unchanged.
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 32)) +
+    # Wrap only very long predictor labels (over 50 characters) onto two
+    # lines, so one label such as "Treatment discontinuation (per 10% of
+    # antidepressants stopped)" does not squeeze the plot area. Shorter ones
+    # stay on one line: in the dense one-marker-per-row panels a wrapped
+    # "Unable to work because of sickness or disability" ran into its
+    # neighbours. Only the displayed text is wrapped; the factor levels, which
+    # the grouping matches on, are unchanged.
+    scale_y_discrete(labels = function(x) {
+      ifelse(nchar(x) > 50, stringr::str_wrap(x, width = 36), x)
+    }) +
     labs(x = "Estimate (Bonferroni-adjusted 95% CI)", y = NULL) +
     theme_minimal(base_size = 16, base_family = "sans") +
     theme(
