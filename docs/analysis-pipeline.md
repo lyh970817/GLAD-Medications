@@ -393,7 +393,7 @@ Two files predate the current pipeline and cannot be regenerated:
 
 ### `docs/` — manuscript tables and numbers (tracked, regenerated in place)
 
-These two scripts read only cached objects and the frames; neither fits a
+These three scripts read only cached objects and the frames; none fits a
 model. Their outputs are tracked files that are regenerated in place and left
 uncommitted after a run, like the result workbooks. Both take
 `MANUSCRIPT_OUT_DIR` (default `docs`) so that a dry run, for example on the
@@ -403,6 +403,7 @@ development extracts, can write to `logs/` instead of over the tracked files.
 |---|---|---|
 | `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
 | `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class` where present |
+| `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
   the sample table is Table 1 (was 0), the side-effect tables 2a–2c (were
@@ -454,6 +455,56 @@ development extracts, can write to `logs/` instead of over the tracked files.
   `dispersion`, since 2026-11-08), because the cached objects keep no fitted
   model. Fits made before that carry none, and the numbers file says so.
 
+### Clinical quantities (`src/06.clinical_quantities.r`)
+
+Since 2026-11-09. Reads only `dat_long` and the cached models; nothing is
+refitted. It must run **after** `src/04.manuscript_tables.r`, which rewrites
+`docs/manuscript-tables-current.md` in full; this script replaces only its own
+marked block there (appending it if absent), so re-running it is idempotent.
+Its numbers go to a sidecar, `docs/manuscript-numbers-clinical.md`, rather than
+into `src/05`'s file, because `src/05` also rewrites its file in full and works
+from the cached result tables alone. Like `src/04` and `src/05` it takes
+`MANUSCRIPT_OUT_DIR`. Helpers are in `lib/11.clinical_quantities.r`.
+
+- **Table 4**: effectiveness (not at all / moderately / very well / unknown)
+  by stopped because of side effects (not stopped / stopped / unknown), per
+  medication, overall and by cohort; cells n (row %). Unknown keeps every
+  missing value visible (effectiveness "don't know", unanswered or not shown;
+  stop status unknown with the number of side effects, or the item unanswered).
+  Two derived proportions, over medications with a known stop status: of those
+  that worked moderately or very well, the share stopped because of side
+  effects; of those that did not work at all, the share not stopped. **Their
+  95% CIs are a participant cluster bootstrap** (2,000 resamples of
+  participants, percentile interval), so the clustering of medications within
+  people is respected. The run stops unless each block's total equals the rows
+  of `dat_long` for that group and the `medication_observations_dat_long_*`
+  keys of `docs/manuscript-numbers-current.md`.
+- **Table 5**: predicted probabilities from the adjusted longitudinal models
+  (`glmm_models_cov`; the unadjusted set is the fallback, and the footnote says
+  which was used), one model per side-effect measure: (i) the same medication
+  not stopped vs stopped, the participant's mean (`stopped_due_to_se_between`)
+  at its observed value, i.e. the within-person contrast; (ii)
+  `n_se_between` at its 25th vs 75th percentile over the model's participants,
+  `n_se_within` at 0; (iii) `se_rating` at its 25th vs 75th percentile over
+  participants (an observed rating; the models code it 1-6, displayed 0-5).
+  **Predictions average over the model's own complete-case rows with the
+  random intercept set to 0** (a typical participant: conditional, not
+  marginal over the random effect, so they sit below the observed marginal
+  rates), and **95% CIs are a parametric bootstrap of the fixed effects** (1,000
+  multivariate normal draws from `vcov()`), with differences in percentage
+  points from the same draws. The run stops if a contrast does not have the
+  sign of its cached odds ratio (Tables 3a/3d).
+- **Effectiveness is not in Table 5.** `fit_glmm()` keeps no fitted model, but
+  for the lme4 fits one survives: `parameters()` stores the call, whose
+  evaluated formula carries the environment of `fit_glmm()` with `m`, `data`,
+  `fit_data` and `scales` in it (which is why each cached glmer set is ~18 MB).
+  `cached_fit_frame()` recovers it. The `clmm` call names `fm` as a bare
+  symbol, so the cached ordinal (effectiveness) sets keep only the
+  exponentiated focal estimates and CIs: no thresholds, no covariate
+  coefficients, no covariance. Predicted effectiveness probabilities need a
+  refit of the three adjusted effectiveness side-effect sets; the table,
+  markdown and numbers file say so.
+
 ### Order of work after a refit
 
 1. `FORCE_REFIT=TRUE Rscript src/02.regression.r > logs/regression_<date>.log 2>&1`
@@ -462,9 +513,14 @@ development extracts, can write to `logs/` instead of over the tracked files.
    Tables 2a–3e, S2a–S3e.
 3. `Rscript src/05.manuscript_numbers.r > logs/numbers_<date>.log 2>&1`: the
    text's numbers. Neither 2 nor 3 depends on the other.
-4. `Rscript src/03.results_plot.r > logs/plots_<date>.log 2>&1`: the figures.
-5. Copy the tables and numbers into the manuscript from
-   `docs/manuscript-tables/*.html` and `docs/manuscript-numbers-current.md`.
+4. `Rscript src/06.clinical_quantities.r > logs/clinical_<date>.log 2>&1`, after
+   2 (it writes into the file 2 rewrites) and after 3 (it checks Table 4's
+   margins against 3's medication counts): Tables 4 and 5 and
+   `docs/manuscript-numbers-clinical.md`. About 1.5 minutes.
+5. `Rscript src/03.results_plot.r > logs/plots_<date>.log 2>&1`: the figures.
+6. Copy the tables and numbers into the manuscript from
+   `docs/manuscript-tables/*.html`, `docs/manuscript-numbers-current.md` and
+   `docs/manuscript-numbers-clinical.md`.
 
 ### `reports/` — local only, gitignored in full
 
