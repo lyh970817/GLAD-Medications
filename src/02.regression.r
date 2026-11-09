@@ -11,7 +11,7 @@ reload.project()
 # all about to be recomputed anyway. Drop them before fitting so the worker
 # processes have room. This only clears the session; the cache files stay put.
 rm(list = intersect(
-  c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist",
+  c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
     "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
   ls(globalenv())
 ), envir = globalenv())
@@ -49,6 +49,10 @@ labels <- c(labels, labels_extra[setdiff(names(labels_extra), names(labels))])
 # The within-person and between-person terms of the decomposed medication-level
 # predictors (lib/09.within_between.r): "Start Age (within person)", ...
 labels <- c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))
+
+# The drug-class dummies of the class sensitivity set (lib/10.drug_class.r):
+# "Drug class: TCA vs SSRI", ...
+labels <- c(labels, drug_class_labels())
 
 # Match covariate terms in model output, including expanded factor coefficients
 # (e.g., sex -> sexFemale)
@@ -421,6 +425,36 @@ glmm_models_cov_famhist <- fit_family(
   covs = c(sens_compete_indeps, "phq9"), data = dat_long_glmm
 )
 
+# 4. Sensitivity: drug class (user ruling 2026-11-09). The adjusted models of
+# (2), fitted on the class-scoped frame -- the rows of the drugs the ruled
+# mapping drops removed, and a participant left with none leaves -- with the
+# class dummies (SSRI the reference) added to the covariates. The
+# within/between means are recomputed over the class-scoped rows. One further
+# set per outcome has the four class dummies as its focal set (adjusted for the
+# same covariates), which is where the class contrasts are reported from; in
+# every other set they are covariates and are not reported. Class is not in the
+# main sets.
+dat_long_class <- apply_class_scope(dat_long_glmm)
+class_scope <- attr(dat_long_class, "class_scope")
+dat_long_class <- add_within_between(dat_long_class, WITHIN_BETWEEN_VARS)
+message(
+  "  Class-scoped frame: ", class_scope$rows_after, " rows from ",
+  class_scope$participants_after, " participants (", class_scope$rows_dropped,
+  " rows of dropped drugs removed; ",
+  class_scope$participants_before - class_scope$participants_after, " participants leave)"
+)
+
+glmm_models_cov_class <- fit_family(
+  glmm_deps,
+  function(dep) {
+    c(
+      decompose_indeps_list(get_adjusted_indeps_list_for_dep(dep, compete_indeps), WITHIN_BETWEEN_VARS),
+      list(drug_class_dummy_columns())
+    )
+  },
+  covs = c(compete_indeps, "phq9", drug_class_dummy_columns()), data = dat_long_class
+)
+
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
 # a model that failed to converge cannot reach a table unnoticed the way the
 # adjusted Remission models did.
@@ -448,7 +482,8 @@ report_convergence <- function(models, label) {
 glmm_convergence <- c(
   report_convergence(glmm_models, "unadjusted"),
   report_convergence(glmm_models_cov, "adjusted"),
-  report_convergence(glmm_models_cov_famhist, "sensitivity")
+  report_convergence(glmm_models_cov_famhist, "sensitivity"),
+  report_convergence(glmm_models_cov_class, "drug-class sensitivity")
 )
 
 # Save Results
@@ -456,6 +491,7 @@ glmm_convergence <- c(
 cache("glmm_models")
 cache("glmm_models_cov")
 cache("glmm_models_cov_famhist")
+cache("glmm_models_cov_class")
 
 write_xlsx_tab(bind_models(multi_adjust(glmm_models)),
   file = "./results/glmm_medications.xlsx", overwrite = TRUE
@@ -477,6 +513,14 @@ write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_famhist)),
 )
 write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_famhist))),
   file = "./results/glmm_medications_sig_cov_famhist.xlsx", overwrite = TRUE
+)
+
+# Sensitivity analysis: adjusted models on the class-scoped frame with drug class
+write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_class)),
+  file = "./results/glmm_medications_cov_class.xlsx", overwrite = TRUE
+)
+write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_class))),
+  file = "./results/glmm_medications_sig_cov_class.xlsx", overwrite = TRUE
 )
 
 # ------------------------------------------------------------------------------

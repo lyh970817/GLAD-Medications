@@ -22,7 +22,8 @@
 #
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
 # HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
-# supp_1a-2e; file names predate the renumbering, see above). Set
+# supp_1a-2e, and the drug-class tables supp_class_1a, 1c, 2a, 2d; file names
+# predate the renumbering, see above). Set
 # MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
 #
@@ -42,7 +43,8 @@ dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 # Model objects each table family needs, all written by src/02.regression.r.
 family_needs <- list(
   glmm = c("glmm_models", "glmm_models_cov"),
-  legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete")
+  legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete"),
+  class = c("glmm_models_cov", "glmm_models_cov_class")
 )
 family_missing <- map(family_needs, ~ .x[!objects_present(.x)])
 for (f in names(family_missing)) {
@@ -595,6 +597,101 @@ for (spec in TABLES) {
 }
 
 md <- c(md, "", "## Supplementary tables", supp_index)
+
+# ------------------------------------------------------------------------------
+# Supplementary Tables S4a-S4d (files supp_class_1a, 1c, 2a, 2d): drug class
+# ------------------------------------------------------------------------------
+# Sensitivity analysis (user ruling 2026-11-09): the adjusted longitudinal
+# models refitted on the class-scoped frame with the drug-class dummies (SSRI
+# the reference) among the covariates (`glmm_models_cov_class`), beside the
+# main adjusted estimates. One table per longitudinal outcome, with the four
+# class contrasts as rows; they come from the set that has the class dummies
+# as its focal predictors. The S4 numbering is provisional (the manuscript has
+# no drug-class table yet).
+class_scope <- attr(apply_class_scope(dat_long), "class_scope")
+class_scope_note <- with(class_scope, paste0(
+  "Class-scoped frame: ", commafy(rows_after), " medication observations from ",
+  commafy(participants_after), " participants, after removing the ", commafy(rows_dropped),
+  " observations of the drugs without a retained class (",
+  paste0(names(rows_dropped_by_drug), " ", commafy(as.integer(rows_dropped_by_drug)), collapse = ", "),
+  "); ", commafy(participants_before - participants_after),
+  " participants with only those drugs leave (full frame: ", commafy(rows_before),
+  " observations, ", commafy(participants_before), " participants)."
+))
+
+class_supp_footnote <- function(tab, spec, n_max) {
+  failed <- attr(tab, "n_failed")
+  paste0(
+    "Sensitivity analysis by drug class. Left: the main adjusted longitudinal models (adjusted for ",
+    ADJUSTMENT_SETS[["glmm"]], ", full frame). Right: the same models on the class-scoped frame with drug ",
+    "class (TCA, SNRI, NaSSA, SARI vs SSRI) added to the covariates; the drug-class rows are from one model ",
+    "per outcome with the four class contrasts and the same covariates. ", class_scope_note, " ",
+    "Largest class-scoped model: N = ", commafy(n_max[1]), " observations from ", commafy(n_max[2]),
+    " participants. ",
+    spec$effect, " with nominal 95% CI; p values are Bonferroni-corrected for the four longitudinal outcomes. ",
+    "N is the complete-case sample of each model (medication observations / participants). ",
+    "–: not estimated in that model.",
+    if (any(is_within_between_row(tab$Parameter))) paste0(" ", WITHIN_BETWEEN_NOTE) else "",
+    if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
+    if (sum(failed)) {
+      paste0(
+        " Not shown: ", failed[["unadjusted"]], " main and ", failed[["adjusted"]],
+        " class-adjusted predictor set(s) that could not be fitted."
+      )
+    } else {
+      ""
+    }
+  )
+}
+
+class_index <- character()
+if (length(family_missing$class)) {
+  class_index <- c(class_index, "", skip_note("class"))
+} else {
+  class_main <- multi_adjust(glmm_models_cov)
+  class_fam <- multi_adjust(glmm_models_cov_class)
+  glmm_specs <- Filter(function(sp) sp$family == "glmm", TABLES)
+  for (j in seq_along(glmm_specs)) {
+    spec <- glmm_specs[[j]]
+    sid <- paste0("S4", letters[j])
+    title <- sub("^Variables significantly associated with", "All adjusted associations with", spec$title)
+    title <- paste0(title, ", with and without adjustment for drug class")
+    tab <- build_supp_table(class_main, class_fam, spec$outcome)
+    if (is.null(tab)) {
+      message("!! no drug-class table for ", sid, " (", spec$outcome, ")")
+      next
+    }
+    sets <- class_fam[[spec$outcome]]
+    n_max <- c(
+      max(vapply(sets, function(x) if (is.null(x)) NA_real_ else as.numeric(attr(x, "n")[1]), numeric(1)), na.rm = TRUE),
+      max(vapply(sets, function(x) if (is.null(x)) NA_real_ else as.numeric(attr(x, "n_id")), numeric(1)), na.rm = TRUE)
+    )
+    foot <- class_supp_footnote(tab, spec, n_max)
+    est <- paste0(spec$effect, " [95% CI]")
+    header <- c("Parameter", paste("Adjusted", est), "p", "N", paste("Adjusted + drug class", est), "p", "N")
+    body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
+    file <- paste0("supp_class_", spec$id, ".html")
+    writeLines(html_table(header, body, foot), file.path(out_dir, file))
+    class_index <- c(
+      class_index, "",
+      paste0("#### Supplementary Table ", sid, ": ", title),
+      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      md_table(header, body)
+    )
+    message("  wrote drug-class table ", sid, " (", nrow(body), " rows)")
+  }
+}
+
+md <- c(
+  md, "", "## Sensitivity analysis: drug class",
+  "",
+  paste0(
+    "`glmm_models_cov_class`: the adjusted longitudinal models refitted on the class-scoped frame ",
+    "with drug class (SSRI reference) added to the covariates; workbook ",
+    "`results/glmm_medications_cov_class.xlsx`. Supplementary Tables S4a-S4d (numbering provisional)."
+  ),
+  class_index
+)
 
 writeLines(md, md_path)
 message("Wrote ", md_path, " and the HTML tables in ", out_dir)

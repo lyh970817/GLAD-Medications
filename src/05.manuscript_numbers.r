@@ -379,6 +379,52 @@ if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_famhist")))) {
 }
 
 # ------------------------------------------------------------------------------
+section <- "Drug-class sensitivity analysis"
+# ------------------------------------------------------------------------------
+# The class-scoped frame (lib/10.drug_class.r) and the class contrasts of the
+# drug-class sensitivity set `glmm_models_cov_class` (user ruling 2026-11-09).
+class_scope <- attr(apply_class_scope(dat_long), "class_scope")
+add("class_scope_rows", commafy(class_scope$rows_after),
+  "Rows of the class-scoped `dat_long`: the drugs without a retained class removed")
+add("class_scope_participants", commafy(class_scope$participants_after),
+  "Participants in the class-scoped `dat_long`")
+add("class_scope_rows_dropped", commafy(class_scope$rows_dropped),
+  paste0("Rows removed by the class scope: ", paste0(names(class_scope$rows_dropped_by_drug), " ",
+    commafy(as.integer(class_scope$rows_dropped_by_drug)), collapse = ", ")))
+add("class_scope_participants_leaving", commafy(class_scope$participants_before - class_scope$participants_after),
+  "Participants whose only medications are drugs without a retained class, so who leave the class-scoped frame")
+for (k in names(class_scope$rows_by_class)) {
+  add(paste0("class_scope_rows_", k), pct_of(as.integer(class_scope$rows_by_class[[k]]), class_scope$rows_after),
+    paste0("Class-scoped rows of class ", DRUG_CLASS_LABELS[[k]], " (of all class-scoped rows)"))
+}
+
+if (all(objects_present("glmm_models_cov_class"))) {
+  class_terms <- unname(drug_class_labels())
+  class_adj <- multi_adjust(glmm_models_cov_class)
+  for (dep in names(class_adj)) {
+    s <- Filter(function(x) !is.null(x) && any(x$Parameter %in% class_terms), class_adj[[dep]])
+    if (!length(s)) {
+      add(paste0("class_effects_", cohort_key(dep)), "not fitted", paste0("Drug-class contrasts for ", dep))
+      next
+    }
+    s <- s[[1]]
+    effect <- if (dep == "Number of Side Effects") "RR" else "OR"
+    for (term in class_terms) {
+      r <- s[s$Parameter == term, ]
+      contrast <- cohort_key(sub("^Drug class: ", "", term))
+      add(paste0("class_", cohort_key(dep), "_", contrast),
+        paste0(r$Coeff_CI, ", p = ", fmt_p(r$p), if (!isTRUE(attr(s, "converged"))) " (convergence warning)" else ""),
+        paste0(effect, " [95% CI], Bonferroni-corrected p (x4), for ", term, " on ", dep,
+          "; adjusted for sex, start age, cumulative medication count and PHQ-9, class-scoped frame, N = ",
+          commafy(attr(s, "n")[1]), " observations / ", commafy(attr(s, "n_id")), " participants"))
+    }
+  }
+} else {
+  add("class_effects", skipped("`glmm_models_cov_class` from src/02.regression.r"),
+    "Drug-class contrasts (TCA, SNRI, NaSSA, SARI vs SSRI) for the four longitudinal outcomes")
+}
+
+# ------------------------------------------------------------------------------
 # Write
 # ------------------------------------------------------------------------------
 numbers <- bind_rows(numbers)

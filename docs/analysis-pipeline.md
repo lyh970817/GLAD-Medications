@@ -205,7 +205,7 @@ compared.
 | Unit of analysis | one row per participant × medication episode | one row per participant |
 | Random effects | participant random intercept, `(1 \| ID)` | none |
 | Fitting helper | `fit_glmm()` in `lib/02.fit_funs.r` | `fit_prop()` / `fit_hurdle()` |
-| Model objects | `glmm_models`, `glmm_models_cov` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
+| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
 | Data frame | `dat_long_glmm` | `dat_nonlong_sef`, `dat_nonlong_eff` |
 
 Both live in `src/02.regression.r`; the legacy block starts under the comment
@@ -275,7 +275,7 @@ within a person. So the decomposed sets are:
 | Set | Decomposed focal predictors |
 |---|---|
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
-| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 
 `start_age` and `cumulative_med_count` also vary within person, but in the
 adjusted sets they are **adjustment covariates and stay as they are**: they are
@@ -303,6 +303,40 @@ itself, and `drop_covariate_terms()` removes them from the output tables
 (matching on prefix, so expanded factor terms like `sexFemale` are caught too).
 
 They remain in the fitted model; they are only absent from the reported rows.
+
+### Drug-class sensitivity set (`glmm_models_cov_class`)
+
+Since 2026-11-09 (user ruling). The adjusted GLMMs (`glmm_models_cov`, with
+their within/between terms) refitted on the **class-scoped** `dat_long`, with
+drug-class dummies (SSRI the reference) added to the covariates. Class is
+**not** in the main sets.
+
+- The mapping is in `lib/10.drug_class.r`, copied from GLAD-SEM
+  `R/drug_class.R` (commit 30daa69, GLAD-SEM ruling 2026-08-30): SSRI =
+  citalopram, escitalopram, fluoxetine, fluvoxamine, paroxetine, sertraline;
+  TCA = amitriptyline, clomipramine, dosulepin, doxepin, imipramine,
+  lofepramine, nortriptyline, trimipramine; SNRI = duloxetine, venlafaxine;
+  NaSSA = mirtazapine, mianserin; SARI = trazodone. Dropped: phenelzine,
+  tranylcypromine, isocarboxazid, moclobemide, vortioxetine, reboxetine,
+  tryptophan, dapoxetine and, by this project's ruling, hypericum_perforatum
+  (not on the GLAD-SEM menu). It is strict: a medication name outside the 28
+  is an error.
+- `apply_class_scope()` removes the dropped drugs' rows (a participant left
+  with none leaves) and adds `drug_class_tca`, `drug_class_snri`,
+  `drug_class_nassa`, `drug_class_sari`. The within/between means are
+  recomputed over the class-scoped rows.
+- Every adjusted predictor set gets the four dummies as covariates (not
+  reported, like the other covariates). One extra set per outcome has the four
+  dummies as its **focal** set, adjusted for the usual covariates; the class
+  contrasts ("Drug class: TCA vs SSRI", ...) are reported from it. So each
+  outcome has one more set than in `glmm_models_cov`.
+- Reported in `results/glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx`,
+  in Supplementary Tables S4a–S4d of `src/04.manuscript_tables.r`
+  (`supp_class_{1a,1c,2a,2d}.html`, main adjusted vs class-adjusted, numbering
+  provisional) with the class-scoped N in the footnotes, and in
+  `docs/manuscript-numbers-current.md` (section "Drug-class sensitivity
+  analysis": class-scoped rows and participants, and the four outcomes × four
+  class contrasts).
 The GLMM covariates `start_age` and `cumulative_med_count` vary within person
 and are entered undecomposed (see "Within/between decomposition").
 
@@ -316,6 +350,8 @@ Everything below except `docs/` is **gitignored** and not in the repository.
 |---|---|
 | `glmm_medications.xlsx` / `_sig.xlsx` | GLMM unadjusted, all rows / significant only |
 | `glmm_medications_cov.xlsx` / `_sig_cov.xlsx` | GLMM adjusted |
+| `glmm_medications_cov_famhist.xlsx` / `_sig_cov_famhist.xlsx` | GLMM adjusted, family history added (sensitivity) |
+| `glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx` | GLMM adjusted, class-scoped frame with drug class (sensitivity) |
 | `medications.xlsx` / `_sig.xlsx` | legacy unadjusted |
 | `medications_cov.xlsx` / `_sig_cov.xlsx` | legacy adjusted |
 | `medications_sig_final.xlsx` | **irreplaceable — see below** |
@@ -365,8 +401,8 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e) | `dat`; `glmm_models`, `glmm_models_cov`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
-| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist` where present |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class` where present |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
   the sample table is Table 1 (was 0), the side-effect tables 2a–2c (were
