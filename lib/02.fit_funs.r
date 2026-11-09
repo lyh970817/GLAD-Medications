@@ -102,6 +102,22 @@ pearson_dispersion <- function(m) {
   )
 }
 
+# How src/02.regression.r turns a predictor column of `dat_long` into the
+# numeric column the GLMMs are fitted on: an ordered factor becomes its level
+# index (so `se_rating`, levels 0-5, is coded 1-6), a two-level factor 0/1.
+# Shared with src/06.clinical_quantities.r, which rebuilds the same frame.
+coerce_glmm_predictor <- function(x) {
+  if (is.ordered(x)) {
+    return(as.numeric(x))
+  }
+
+  if (is.factor(x) && nlevels(x) == 2) {
+    return(as.numeric(x) - 1)
+  }
+
+  x
+}
+
 fit_glmm <- function(dep, indeps, data, family = NULL) {
   # Clean data
   # Ensure ID is included in selection for the random effect

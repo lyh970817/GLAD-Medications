@@ -83,45 +83,136 @@ cluster_boot_prop <- function(num, den, id, B = 2000, level = 0.95) {
 }
 
 # ------------------------------------------------------------------------------
-# Predicted probabilities from a recovered binomial glmer
+# Refitting the three adjusted ordinal effectiveness models (authorised
+# 2026-11-09 for exactly these three)
 # ------------------------------------------------------------------------------
-# A predictor value on the model's own (centred and scaled) footing:
-# fit_glmm() centres and scales every continuous predictor in its complete-case
-# `data` and leaves binary ones alone (scale 1, not centred).
+# The cached clmm results cannot be predicted from (see cached_fit_frame()).
+# src/06.clinical_quantities.r refits the adjusted effectiveness models with
+# the stopped, number-of-side-effects (within/between) and severity sets, with
+# the formula taken verbatim from the cached set's `model_formula` attribute and
+# the data built as src/02.regression.r builds it (coerce_glmm_predictor(), then
+# add_within_between(), then fit_glmm()'s na.omit() over ID, outcome and
+# predictors; clmm predictors are not scaled). Full fits are kept in
+# cache/clinical_fits/<key>.rds, keyed by formula + data, and reused.
+CLINICAL_FIT_DIR <- file.path("cache", "clinical_fits")
+
+# The complete-case rows and formula for one model, as fit_glmm() builds them.
+clmm_job <- function(model_formula, data_long) {
+  dep <- trimws(sub("~.*$", "", model_formula))
+  indeps <- trimws(strsplit(sub("^[^~]*~", "", model_formula), "+", fixed = TRUE)[[1]])
+  d <- na.omit(data_long[c("ID", dep, indeps)])
+  fm <- paste(dep, "~", paste(indeps, collapse = "+"), "+ (1 | ID)")
+  key <- digest::digest(list(recipe = "clmm-logit-unscaled", formula = fm, data = digest::digest(d)))
+  list(dep = dep, indeps = indeps, formula = fm, data = d,
+    path = file.path(CLINICAL_FIT_DIR, paste0(key, ".rds")))
+}
+
+# Fits each job whose file is missing, `workers` at a time on fresh PSOCK
+# workers (see fit_family() in src/02.regression.r for why not fork), and
+# returns the saved objects: list(m, data, formula, seconds, fitted_at).
+fit_clinical_clmms <- function(jobs, workers = 3) {
+  dir.create(CLINICAL_FIT_DIR, showWarnings = FALSE, recursive = TRUE)
+  todo <- Filter(function(j) !file.exists(j$path), jobs)
+  message("  ", length(jobs), " effectiveness models, ", length(todo), " to fit, on ",
+    min(workers, max(length(todo), 1)), " workers")
+  if (length(todo)) {
+    cl <- parallel::makePSOCKcluster(min(workers, length(todo)))
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+    started <- Sys.time()
+    done <- parallel::parLapplyLB(cl, todo, function(job) {
+      suppressMessages(library(ordinal))
+      fm <- stats::as.formula(job$formula)
+      # The formula environment would otherwise drag this frame (and the data)
+      # into the saved object.
+      environment(fm) <- baseenv()
+      t0 <- Sys.time()
+      m <- ordinal::clmm(fm, data = job$data, link = "logit")
+      secs <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+      saveRDS(list(m = m, data = job$data, formula = job$formula, seconds = secs, fitted_at = Sys.time()), job$path)
+      c(path = job$path, seconds = secs)
+    })
+    for (d in done) message("  fitted ", basename(d[["path"]]), " in ", round(as.numeric(d[["seconds"]]) / 60, 1), " min")
+    message("  all fits done in ", round(as.numeric(difftime(Sys.time(), started, units = "mins")), 1), " min wall time")
+  }
+  lapply(jobs, function(j) readRDS(j$path))
+}
+
+# Exponentiated focal estimates with Wald 95% CIs from a clmm fit, as
+# parameters() reports them, for comparison with the cached table.
+clmm_focal_or <- function(m, terms) {
+  b <- m$beta[terms]
+  se <- sqrt(diag(stats::vcov(m))[terms])
+  z <- stats::qnorm(0.975)
+  tibble(term = terms, Coefficient = exp(b), CI_low = exp(b - z * se), CI_high = exp(b + z * se))
+}
+
+# ------------------------------------------------------------------------------
+# Predicted probabilities, random intercept at 0, averaged over the model's rows
+# ------------------------------------------------------------------------------
+# A predictor value on the model's own footing: fit_glmm() centres and scales
+# every continuous predictor of an lme4 fit in its complete-case `data` and
+# leaves binary ones (scale 1) alone; clmm fits are unscaled (scales all 1).
 to_fit_scale <- function(value, var, frame) {
   s <- frame$scales[[var]]
   if (s == 1) value else (value - mean(frame$data[[var]])) / s
 }
 
-# `n` draws of the fixed effects from N(beta_hat, V), by the Cholesky factor.
-draw_fixef <- function(beta, V, n) {
-  z <- matrix(stats::rnorm(n * length(beta)), n)
-  sweep(z %*% chol(V), 2, beta, "+")
+# `n` draws from N(mu, V), by the Cholesky factor.
+draw_mvn <- function(mu, V, n) {
+  z <- matrix(stats::rnorm(n * length(mu)), n)
+  sweep(z %*% chol(V), 2, mu, "+")
 }
 
-# Average predicted probability of the outcome's second level over the model's
-# own rows, with the participant random intercept set to 0, under each of
-# `scenarios`: a named list of functions(data) returning a named list of
-# predictor values (unscaled; a vector of one value per row, or one value).
-# The estimate uses the fitted fixed effects; the 95% CI is the percentile
-# interval over `draws` (a matrix of fixed-effect draws, one per row), the
-# parametric bootstrap. Returns per-scenario estimates and the draws of each,
-# so that contrasts between scenarios get their own interval.
-predict_scenarios <- function(frame, scenarios, draws) {
+# What prediction needs from a fitted model: the point estimate `theta` and
+# covariance `V` of the fixed parameters, the design matrix of the model's own
+# rows, and `probs(X, theta_rows)`, which returns one row per parameter vector
+# (row of `theta_rows`) and one column per outcome category: the probability
+# averaged over the rows of X with the random intercept at 0.
+#   glmer (binomial): P(second level) = plogis(X beta), X with intercept.
+#   clmm (logit): P(Y <= j) = plogis(alpha_j - X beta), X without intercept.
+model_predictor <- function(frame, categories) {
   m <- frame$m
-  X0 <- lme4::getME(m, "X")
-  beta <- lme4::fixef(m)
-  stopifnot(identical(colnames(X0), names(beta)), nrow(X0) == nrow(frame$data))
+  if (inherits(m, "glmerMod")) {
+    stopifnot(stats::family(m)$family == "binomial")
+    theta <- lme4::fixef(m)
+    X0 <- lme4::getME(m, "X")
+    stopifnot(identical(colnames(X0), names(theta)))
+    probs <- function(X, th) matrix(colMeans(stats::plogis(X %*% t(th))), ncol = 1, dimnames = list(NULL, categories))
+    V <- as.matrix(stats::vcov(m))
+  } else if (inherits(m, "clmm")) {
+    theta <- c(m$alpha, m$beta)
+    k <- length(m$alpha)
+    X0 <- as.matrix(frame$data[names(m$beta)])
+    V <- as.matrix(stats::vcov(m))[names(theta), names(theta)]
+    probs <- function(X, th) {
+      eta <- X %*% t(th[, -seq_len(k), drop = FALSE])
+      cum <- vapply(seq_len(k), function(j) colMeans(stats::plogis(sweep(-eta, 2, th[, j], "+"))), numeric(nrow(th)))
+      cum <- matrix(cum, nrow(th))
+      out <- cbind(cum, 1) - cbind(0, cum)
+      colnames(out) <- categories
+      out
+    }
+  } else {
+    stop("No predictor for a ", class(m)[1], " fit")
+  }
+  stopifnot(nrow(X0) == nrow(frame$data))
+  list(theta = theta, V = V, X0 = X0, probs = probs)
+}
+
+# For each of `scenarios` (functions(data) returning a named list of unscaled
+# predictor values, one per row or one overall), the point estimate (a named
+# vector over categories) and the parametric bootstrap draws (a draws x
+# categories matrix) of the averaged predicted probabilities. `draws` is a
+# matrix of parameter draws (one per row) from draw_mvn().
+predict_scenarios <- function(frame, pred, scenarios, draws) {
   lapply(scenarios, function(sc) {
-    X <- X0
+    X <- pred$X0
     vals <- sc(frame$data)
     for (v in names(vals)) {
       if (!v %in% colnames(X)) stop("Scenario term not in the model: ", v)
       X[, v] <- to_fit_scale(vals[[v]], v, frame)
     }
-    est <- mean(stats::plogis(drop(X %*% beta)))
-    boot <- colMeans(stats::plogis(X %*% t(draws)))
-    list(est = est, boot = boot)
+    list(est = pred$probs(X, matrix(pred$theta, 1))[1, ], boot = pred$probs(X, draws))
   })
 }
 

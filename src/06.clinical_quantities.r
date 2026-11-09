@@ -1,20 +1,25 @@
 # Clinically interpretable quantities for the manuscript, from the analysis
-# frames and the cached model objects. Nothing is refitted.
+# frames and the cached model objects. The only models fitted are the three
+# adjusted ordinal effectiveness models of Table 5 (authorised 2026-11-09),
+# because the cached ordinal results cannot be predicted from; they are kept
+# in cache/clinical_fits/ and reused, so only the first run fits them (20-50
+# minutes each, three at a time; CLINICAL_WORKERS sets the number of workers).
 #
 # A. Table 4 (provisional number): reported effectiveness by stopping because
 #    of side effects, per medication, from `dat_long`, overall and by cohort,
 #    with unknown values kept as their own row and column; and two derived
 #    proportions with participant cluster-bootstrap 95% CIs.
-# B. Table 5 (provisional number): predicted probabilities of the outcome by
-#    the side-effect measures, from the cached adjusted longitudinal models
-#    (`glmm_models_cov`), else the unadjusted ones (`glmm_models`). The
+# B. Table 5 (provisional number): predicted probabilities of each outcome
+#    category by the side-effect measures, from the adjusted longitudinal
+#    models: for remission the cached fits in `glmm_models_cov` (else the
+#    unadjusted `glmm_models`), for effectiveness the three refits. The
 #    predictions average over the model's own rows with the participant random
 #    intercept set to 0 (conditional on a typical participant, not marginal over
 #    the random effect); 95% CIs are a parametric bootstrap of the fixed effects
 #    (1,000 multivariate normal draws from their covariance). See
-#    lib/11.clinical_quantities.r for why only the binomial (remission) fits can
-#    be used: the cached ordinal (effectiveness) results keep no thresholds,
-#    covariate coefficients or covariance.
+#    lib/11.clinical_quantities.r for why the effectiveness models had to be
+#    refitted: the cached ordinal results keep no thresholds, covariate
+#    coefficients or covariance.
 #
 # Output (MANUSCRIPT_OUT_DIR, default docs/):
 #   manuscript-tables/table_cross_effectiveness_stopping.html  (Table 4)
@@ -30,7 +35,9 @@
 # Checks (the run stops if one fails): the cross-table margins equal the rows
 # of `dat_long` by cohort and the medication counts in
 # manuscript-numbers-current.md; every predicted contrast has the sign of its
-# odds ratio in the cached adjusted table (Tables 3a and 3d).
+# odds ratio in the cached adjusted table (Tables 3a and 3d); before that, the
+# refitted effectiveness models must reproduce Table 3a's N, odds ratios and
+# CIs (to two decimals).
 #
 # plyr, attached after dplyr, masks mutate(), summarise() and count(); keep them
 # qualified (see "Namespace masking" in docs/analysis-pipeline.md).
@@ -219,25 +226,103 @@ SE_SETS <- list(
   n_se = within_between_terms("n_se"),
   se_rating = "se_rating"
 )
-
 pp_outcomes <- c(Effectiveness = "effectiveness", Remission = "remission")
+CATEGORIES <- list(Effectiveness = unname(EFF_LEVELS), Remission = "Remission")
+TABLE_REF <- c(Effectiveness = "3a", Remission = "3d")
 
-# The model frame for an outcome x set: the adjusted fit where it can be
-# recovered, else the unadjusted one; NULL with the reason otherwise.
+FOCAL_TERM <- c(stopped = "stopped_due_to_se_within", n_se = "n_se_between", se_rating = "se_rating")
+SET_LABELS <- c(
+  stopped = "Stopped because of side effects (within person)",
+  n_se = "Mean number of side effects (between persons; within-person term at 0)",
+  se_rating = "Side-effect severity rating (person level)"
+)
+# The labels the cached tables carry for the focal terms, as src/02.regression.r
+# builds them ("... (within person)", "... (between persons)").
+term_labels <- c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))
+
+if (!all(objects_present("glmm_models_cov"))) {
+  stop("Table 5 needs `glmm_models_cov` from src/02.regression.r in cache/")
+}
+
+# ------------------------------------------------------------------------------
+# Remission: the fitted glmer models recovered from the cached tables
+# ------------------------------------------------------------------------------
+# The adjusted fit where it can be recovered, else the unadjusted one.
 locate_frame <- function(outcome, terms) {
   for (obj in c("glmm_models_cov", "glmm_models")) {
     if (!exists(obj, envir = globalenv())) next
     s <- find_set_by_terms(get(obj, envir = globalenv())[[outcome]], terms)
     fr <- cached_fit_frame(s)
     if (!is.null(fr)) {
-      return(list(frame = fr, set = s, source = obj,
-        adjusted = obj == "glmm_models_cov"))
+      return(list(frame = fr, set = s, source = obj))
     }
   }
   NULL
 }
 
-# Scenarios for each set, as functions of the model's complete-case data.
+# ------------------------------------------------------------------------------
+# Effectiveness: the three adjusted ordinal models, refitted (authorised
+# 2026-11-09 for exactly these three) or reused from cache/clinical_fits/
+# ------------------------------------------------------------------------------
+# The formula is the cached set's own `model_formula`; the frame is built as in
+# src/02.regression.r (coerce_glmm_predictor() on the predictors, then the
+# within/between terms over all rows), and clmm_job() takes fit_glmm()'s
+# complete cases. The complete-case N and participants must equal the cached
+# set's before anything is fitted, and the refitted odds ratios and CIs must
+# equal Table 3a's to two decimals before anything is predicted.
+eff_sets <- map(SE_SETS, ~ find_set_by_terms(glmm_models_cov[["Effectiveness"]], .x))
+if (any(map_lgl(eff_sets, is.null))) {
+  stop("Adjusted effectiveness set(s) not in glmm_models_cov: ", paste(names(eff_sets)[map_lgl(eff_sets, is.null)], collapse = ", "))
+}
+formula_vars <- unique(unlist(map(eff_sets, function(st) {
+  trimws(strsplit(sub("^[^~]*~", "", attr(st, "model_formula")), "+", fixed = TRUE)[[1]])
+})))
+coerce_vars <- union(intersect(formula_vars, names(dat_long)), WITHIN_BETWEEN_VARS)
+dat_long_glmm <- dat_long %>%
+  dplyr::mutate(across(all_of(coerce_vars), coerce_glmm_predictor)) %>%
+  add_within_between(WITHIN_BETWEEN_VARS)
+
+eff_jobs <- map(eff_sets, ~ clmm_job(attr(.x, "model_formula"), dat_long_glmm))
+for (k in names(eff_jobs)) {
+  j <- eff_jobs[[k]]
+  st <- eff_sets[[k]]
+  if (nrow(j$data) != attr(st, "n")[1] || n_distinct(j$data$ID) != attr(st, "n_id")) {
+    stop("Rebuilt effectiveness frame for ", k, " has ", nrow(j$data), " rows / ", n_distinct(j$data$ID),
+      " participants; the cached model has ", attr(st, "n")[1], " / ", attr(st, "n_id"))
+  }
+  message("  effectiveness / ", k, ": ", j$formula, " on ", commafy(nrow(j$data)), " rows (= cached N)")
+}
+eff_fits <- fit_clinical_clmms(eff_jobs, workers = as.integer(Sys.getenv("CLINICAL_WORKERS", "3")))
+names(eff_fits) <- names(eff_jobs)
+
+eff_frames <- list()
+for (k in names(eff_fits)) {
+  f <- eff_fits[[k]]
+  st <- eff_sets[[k]]
+  mine <- clmm_focal_or(f$m, SE_SETS[[k]])
+  cached <- st[match(unname(term_labels[SE_SETS[[k]]]), st$Parameter), c("Coefficient", "CI_low", "CI_high")]
+  same <- function(x, y) round(x, 2) == round(y, 2) | abs(x - y) < 1e-4
+  ok <- all(same(mine$Coefficient, cached$Coefficient), same(mine$CI_low, cached$CI_low), same(mine$CI_high, cached$CI_high))
+  if (!isTRUE(ok)) {
+    stop("Refitted effectiveness / ", k, " does not reproduce Table 3a:\n",
+      paste(capture.output(print(bind_cols(mine, rename_with(cached, ~ paste0("cached_", .x))))), collapse = "\n"))
+  }
+  message("  check: effectiveness / ", k, " refit reproduces Table 3a (",
+    paste0(mine$term, " ", formatC(mine$Coefficient, format = "f", digits = 2), " [",
+      formatC(mine$CI_low, format = "f", digits = 2), ", ", formatC(mine$CI_high, format = "f", digits = 2), "]",
+      collapse = "; "), "); fitted in ", round(f$seconds / 60, 1), " min")
+  eff_frames[[k]] <- list(
+    frame = list(m = f$m, data = f$data, scales = setNames(rep(1, length(eff_jobs[[k]]$indeps)), eff_jobs[[k]]$indeps)),
+    set = st, source = "glmm_models_cov", seconds = f$seconds, file = basename(eff_jobs[[k]]$path)
+  )
+  add("Refitted effectiveness models", paste0("clinical_fit_minutes_", k), formatC(f$seconds / 60, format = "f", digits = 1),
+    paste0("Minutes to fit the adjusted ordinal effectiveness model `", f$formula, "` (", commafy(nrow(f$data)),
+      " observations), cache/clinical_fits/", basename(eff_jobs[[k]]$path), "; fitted ", format(f$fitted_at, "%Y-%m-%d %H:%M")))
+}
+
+# ------------------------------------------------------------------------------
+# Scenarios, as functions of the model's complete-case data
+# ------------------------------------------------------------------------------
 participant_quantiles <- function(d, var, type = 7) {
   x <- d %>% distinct(ID, .data[[var]]) %>% pull(var)
   stats::quantile(x, c(0.25, 0.75), type = type, names = FALSE)
@@ -267,7 +352,7 @@ scenarios_for <- function(set_name, d) {
       )
     },
     # (iii) the person-level severity rating at its 25th and 75th percentile
-    # over participants (an observed rating, type 1). The model codes it 1-6
+    # over participants (an observed rating, type 1). The models code it 1-6
     # (as.numeric of the ordered factor 0-5), so 1 is subtracted for display.
     se_rating = {
       q <- participant_quantiles(d, "se_rating", type = 1)
@@ -280,62 +365,52 @@ scenarios_for <- function(set_name, d) {
     }
   )
 }
-SET_LABELS <- c(
-  stopped = "Stopped because of side effects (within person)",
-  n_se = "Mean number of side effects (between persons; within-person term at 0)",
-  se_rating = "Side-effect severity rating (person level)"
-)
-FOCAL_TERM <- c(stopped = "stopped_due_to_se_within", n_se = "n_se_between", se_rating = "se_rating")
-# The labels the cached tables carry for the focal terms, as src/02.regression.r
-# builds them ("... (within person)", "... (between persons)").
-focal_labels <- setNames(c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))[FOCAL_TERM], names(FOCAL_TERM))
 
+# ------------------------------------------------------------------------------
+# Predictions
+# ------------------------------------------------------------------------------
 pp_rows <- list()
-pp_unavailable <- character()
 for (outcome in names(pp_outcomes)) {
   for (set_name in names(SE_SETS)) {
-    loc <- locate_frame(outcome, SE_SETS[[set_name]])
-    if (is.null(loc)) {
-      pp_unavailable <- c(pp_unavailable, setNames(paste0(outcome, ": ", SET_LABELS[[set_name]]),
-        paste0("pp_", cohort_key(outcome), "_", set_name)))
-      message("!! ", outcome, " / ", set_name, ": no recoverable fitted model in the cache; skipped")
-      next
-    }
+    loc <- if (outcome == "Effectiveness") eff_frames[[set_name]] else locate_frame(outcome, SE_SETS[[set_name]])
+    if (is.null(loc)) stop(outcome, " / ", set_name, ": no fitted model available")
     fr <- loc$frame
-    m <- fr$m
-    if (!(inherits(m, "glmerMod") && stats::family(m)$family == "binomial")) {
-      stop("Only binomial glmer fits are supported here; ", outcome, " / ", set_name, " is ", class(m)[1])
-    }
+    cats <- CATEGORIES[[outcome]]
+    pred <- model_predictor(fr, cats)
     sc <- scenarios_for(set_name, fr$data)
-    draws <- draw_fixef(lme4::fixef(m), as.matrix(stats::vcov(m)), N_PARAM_BOOT)
-    pr <- predict_scenarios(fr, sc$fns, draws)
+    draws <- draw_mvn(pred$theta, pred$V, N_PARAM_BOOT)
+    pr <- predict_scenarios(fr, pred, sc$fns, draws)
 
-    # Check: the contrast has the sign of the focal odds ratio in the cached
-    # table (the adjusted column of Table 3d for remission).
-    beta <- lme4::fixef(m)[[FOCAL_TERM[[set_name]]]]
-    or_row <- loc$set[loc$set$Parameter == unname(focal_labels[[set_name]]), ]
-    if (nrow(or_row) != 1) stop("No row ", focal_labels[[set_name]], " in the cached ", outcome, " set")
-    diff_est <- pr[[2]]$est - pr[[1]]$est
-    if (sign(diff_est) != sign(beta) || sign(log(or_row$Coefficient)) != sign(beta)) {
-      stop("Predicted contrast for ", outcome, " / ", set_name, " (", signif(diff_est, 3),
-        ") does not follow the sign of its odds ratio")
+    # Check: the contrast follows the sign of the focal odds ratio in the
+    # cached table (Table 3a / 3d, adjusted). For the ordinal outcome a
+    # positive log odds ratio moves probability to the higher categories, so the
+    # top category moves with it and the bottom one against it.
+    beta <- pred$theta[[FOCAL_TERM[[set_name]]]]
+    or_row <- loc$set[loc$set$Parameter == unname(term_labels[FOCAL_TERM[[set_name]]]), ]
+    if (nrow(or_row) != 1) stop("No row ", term_labels[FOCAL_TERM[[set_name]]], " in the cached ", outcome, " set")
+    d_est <- pr[[2]]$est - pr[[1]]$est
+    ok <- sign(log(or_row$Coefficient)) == sign(beta) && sign(d_est[[length(cats)]]) == sign(beta) &&
+      (length(cats) == 1 || sign(d_est[[1]]) == -sign(beta))
+    if (!ok) {
+      stop("Predicted contrast for ", outcome, " / ", set_name, " (", paste(signif(d_est, 3), collapse = ", "),
+        ") does not follow the sign of its odds ratio (", or_row$Coeff_CI, ")")
     }
-    message("  check: ", outcome, " / ", set_name, " contrast ", fmt_pct(diff_est), " pp, OR ",
-      or_row$Coeff_CI, " (same direction)")
+    message("  check: ", outcome, " / ", set_name, " contrast ", paste0(cats, " ", fmt_pct(d_est), " pp", collapse = ", "),
+      "; OR ", or_row$Coeff_CI, " (Table ", TABLE_REF[[outcome]], "; same direction)")
 
     n_txt <- paste0(commafy(attr(loc$set, "n")[1]), " / ", commafy(attr(loc$set, "n_id")))
     n_long <- paste0(commafy(attr(loc$set, "n")[1]), " observations from ", commafy(attr(loc$set, "n_id")), " participants")
     for (j in seq_along(pr)) {
-      pp_rows[[length(pp_rows) + 1]] <- tibble(
-        outcome = outcome, set = set_name, value = sc$values[j], key = sc$keys[j],
-        est = pr[[j]]$est,
-        prob = ci_text(pr[[j]]$est, pr[[j]]$boot),
-        diff = if (j == 1) "Reference" else ci_text(pr[[j]]$est - pr[[1]]$est, pr[[j]]$boot - pr[[1]]$boot),
-        or = or_row$Coeff_CI,
-        n = n_txt, n_long = n_long,
-        source = loc$source,
-        q = if (!is.null(sc$q)) sc$q[j] else NA_real_
-      )
+      for (cc in seq_along(cats)) {
+        pp_rows[[length(pp_rows) + 1]] <- tibble(
+          outcome = outcome, set = set_name, value = sc$values[j], key = sc$keys[j], j = j,
+          category = cats[cc], cat_key = if (length(cats) > 1) paste0("_", cohort_key(cats[cc])) else "",
+          prob = ci_text(pr[[j]]$est[[cc]], pr[[j]]$boot[, cc]),
+          diff = if (j == 1) "Reference" else ci_text(pr[[j]]$est[[cc]] - pr[[1]]$est[[cc]], pr[[j]]$boot[, cc] - pr[[1]]$boot[, cc]),
+          or = or_row$Coeff_CI, n = n_txt, n_long = n_long, source = loc$source,
+          q = if (!is.null(sc$q)) sc$q[j] else NA_real_
+        )
+      }
     }
     rm(draws, pr)
     invisible(gc())
@@ -345,42 +420,44 @@ pp <- bind_rows(pp_rows)
 
 for (r in seq_len(nrow(pp))) {
   x <- pp[r, ]
-  add("Predicted probabilities (Table 5)", paste0("pp_", cohort_key(x$outcome), "_", x$key),
+  what <- if (x$outcome == "Effectiveness") paste0("effectiveness \"", tolower(x$category), "\"") else "remission"
+  add("Predicted probabilities (Table 5)", paste0("pp_", cohort_key(x$outcome), "_", x$key, x$cat_key),
     sub("^(\\S+) ", "\\1% ", x$prob),
-    paste0("Predicted probability (%, 95% CI) of ", tolower(x$outcome), " for a medication, ",
+    paste0("Predicted probability (%, 95% CI) of ", what, " for a medication, ",
       SET_LABELS[[x$set]], ": ", x$value, "; ", if (x$source == "glmm_models_cov") "adjusted" else "unadjusted",
       " model (", x$n_long, "), averaged over the model's rows with the random intercept at 0; ",
       "parametric bootstrap CI (", commafy(N_PARAM_BOOT), " draws)"))
   if (x$diff != "Reference") {
-    add("Predicted probabilities (Table 5)", paste0("pp_", cohort_key(x$outcome), "_", x$set, "_difference"),
+    add("Predicted probabilities (Table 5)", paste0("pp_", cohort_key(x$outcome), "_", x$set, "_difference", x$cat_key),
       sub("^(\\S+) ", "\\1 pp ", x$diff),
-      paste0("Difference in predicted probability of ", tolower(x$outcome), ", ", SET_LABELS[[x$set]],
+      paste0("Difference in predicted probability of ", what, ", ", SET_LABELS[[x$set]],
         ", second minus first scenario; 95% CI from the same parametric bootstrap draws"))
   }
-  if (!is.na(x$q)) {
+  if (!is.na(x$q) && x$category == CATEGORIES[[x$outcome]][1]) {
     add("Predicted probabilities (Table 5)", paste0("pp_", cohort_key(x$outcome), "_", x$key, "_value"),
       formatC(x$q, format = "f", digits = 2),
-      paste0("Value of the ", SET_LABELS[[x$set]], " at that percentile over the participants in the model"))
+      paste0("Value of the ", SET_LABELS[[x$set]], " at that percentile over the participants in the ", tolower(x$outcome), " model"))
   }
 }
-for (k in names(pp_unavailable)) {
-  add("Predicted probabilities (Table 5)", k, "not available from the cache",
-    paste0(pp_unavailable[[k]], ": the cached ordinal (clmm) results keep only exponentiated focal estimates and CIs, ",
-      "no thresholds, covariate coefficients or covariance; predicted probabilities need a refit"))
-}
 
-pp_header <- c("Side-effect measure", "Value", "Predicted probability, % [95% CI]",
+pp_header <- c("Side-effect measure", "Value", "Outcome category", "Predicted probability, % [95% CI]",
   "Difference, percentage points [95% CI]", "Adjusted OR [95% CI]", "N (observations / participants)")
+OUTCOME_HEADINGS <- c(
+  Effectiveness = "Effectiveness: probability of each reported effectiveness category (Table 3a)",
+  Remission = "Remission: probability of remission on the medication (Table 3d)"
+)
 pp_body <- list()
 pp_italic <- logical()
 for (outcome in unique(pp$outcome)) {
-  pp_body[[length(pp_body) + 1]] <- tibble(a = paste0(outcome, ": probability of ", tolower(outcome), " on the medication"), b = "", c = "", d = "", e = "", f = "")
+  pp_body[[length(pp_body) + 1]] <- tibble(a = OUTCOME_HEADINGS[[outcome]], b = "", c = "", d = "", e = "", f = "", g = "")
   pp_italic <- c(pp_italic, TRUE)
   for (s in unique(pp$set[pp$outcome == outcome])) {
     x <- filter(pp, outcome == !!outcome, set == s)
+    first_of_value <- !duplicated(x$j)
     pp_body[[length(pp_body) + 1]] <- tibble(
-      a = c(SET_LABELS[[s]], rep("", nrow(x) - 1)), b = x$value, c = x$prob, d = x$diff,
-      e = c(x$or[1], rep("", nrow(x) - 1)), f = c(x$n[1], rep("", nrow(x) - 1))
+      a = c(SET_LABELS[[s]], rep("", nrow(x) - 1)), b = ifelse(first_of_value, x$value, ""), c = x$category,
+      d = x$prob, e = x$diff,
+      f = c(x$or[1], rep("", nrow(x) - 1)), g = c(x$n[1], rep("", nrow(x) - 1))
     )
     pp_italic <- c(pp_italic, rep(FALSE, nrow(x)))
   }
@@ -390,10 +467,11 @@ names(pp_body) <- pp_header
 
 any_unadjusted <- any(pp$source != "glmm_models_cov")
 pp_foot <- paste0(
-  "Predicted probability of the outcome for a medication, from the ",
+  "Predicted probability of each outcome category for a medication, from the ",
   if (any_unadjusted) "longitudinal models (adjusted where marked, otherwise unadjusted)" else
     "adjusted longitudinal models (sex, starting age, cumulative medication count and PHQ-9)",
-  ", each side-effect measure in its own model, with the participant random intercept. ",
+  ", each side-effect measure in its own model, with the participant random intercept: ordinal logistic for ",
+  "effectiveness, logistic for remission. ",
   "Predictions are averaged over the observed covariate values of the model's own medication observations ",
   "with the random intercept set to 0, i.e. for a typical participant (conditional, not marginal over ",
   "the random effect). Stopped vs not stopped: the same medication with the participant's own mean ",
@@ -401,13 +479,11 @@ pp_foot <- paste0(
   "effects: the participant's mean at its 25th and 75th percentile over the participants in the model, ",
   "the within-person term at 0. Severity rating (0-5): 25th and 75th percentile over participants. ",
   "95% CI: parametric bootstrap of the fixed effects (", commafy(N_PARAM_BOOT), " multivariate normal ",
-  "draws from their estimated covariance; percentile interval); no model was refitted. OR: the adjusted ",
-  "estimate of Table 3d.",
-  if (length(pp_unavailable)) paste0(
-    " Not shown: effectiveness (Table 3a). The cached ordinal effectiveness models keep only the focal odds ",
-    "ratios and their CIs, without thresholds, covariate coefficients or covariance, so predicted ",
-    "probabilities of each effectiveness category need a refit of those three models."
-  ) else ""
+  "draws from their estimated covariance, including the effectiveness thresholds; percentile interval); ",
+  "differences are from the same draws. OR: the adjusted estimate of Table 3a (effectiveness, per step ",
+  "towards better effectiveness) or Table 3d (remission). The remission models are the cached fits; the ",
+  "three effectiveness models were refitted with the same formula and complete-case rows, reproducing ",
+  "Table 3a's estimates."
 )
 writeLines(html_table(pp_header, pp_body, pp_foot, italic_rows = pp_italic),
   file.path(out_dir, "table_predicted_probabilities.html"))
@@ -423,8 +499,9 @@ block <- c(
   "",
   "## Clinical quantities",
   "",
-  paste0("Generated ", format(Sys.Date()), " by `src/06.clinical_quantities.r` from `dat_long` and the cached"),
-  "models (no refit). Table numbers are provisional.",
+  paste0("Generated ", format(Sys.Date()), " by `src/06.clinical_quantities.r` from `dat_long`, the cached"),
+  "remission models and three refitted adjusted effectiveness models (`cache/clinical_fits/`).",
+  "Table numbers are provisional.",
   "",
   "#### Table 4: Reported effectiveness by stopping because of side effects, per medication",
   paste0("`manuscript-tables/table_cross_effectiveness_stopping.html`. ", cross_foot),
@@ -452,7 +529,8 @@ nmd <- c(
   "# Manuscript numbers — clinical quantities",
   "",
   paste0("Generated ", format(Sys.Date()), " by `src/06.clinical_quantities.r` from `dat_long` and the"),
-  "cached longitudinal models (no refit). A sidecar to `manuscript-numbers-current.md`",
+  "longitudinal models (remission: cached fits; effectiveness: three refits in `cache/clinical_fits/`).",
+  "A sidecar to `manuscript-numbers-current.md`",
   "(`src/05.manuscript_numbers.r`); keys ending in a cohort name or `overall` give that group.",
   ""
 )

@@ -242,17 +242,8 @@ get_adjusted_indeps_list_for_dep <- function(dep, competing = compete_indeps) {
   discard(dep_indeps, ~ length(.x) == 1 && .x %in% competing)
 }
 
-coerce_glmm_predictor <- function(x) {
-  if (is.ordered(x)) {
-    return(as.numeric(x))
-  }
-
-  if (is.factor(x) && nlevels(x) == 2) {
-    return(as.numeric(x) - 1)
-  }
-
-  x
-}
+# coerce_glmm_predictor() is in lib/02.fit_funs.r, shared with
+# src/06.clinical_quantities.r, which rebuilds this frame to refit three models.
 
 glmm_predictor_vars <- unique(unlist(c(
   indeps_list_base,

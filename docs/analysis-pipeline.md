@@ -457,8 +457,11 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 ### Clinical quantities (`src/06.clinical_quantities.r`)
 
-Since 2026-11-09. Reads only `dat_long` and the cached models; nothing is
-refitted. It must run **after** `src/04.manuscript_tables.r`, which rewrites
+Since 2026-11-09. Reads `dat_long` and the cached models. The only models it
+fits are the three adjusted ordinal effectiveness models of Table 5 (see
+below; authorised 2026-11-09 for exactly these three), kept in
+`cache/clinical_fits/` and reused, so only the first run on new data fits
+them. It must run **after** `src/04.manuscript_tables.r`, which rewrites
 `docs/manuscript-tables-current.md` in full; this script replaces only its own
 marked block there (appending it if absent), so re-running it is idempotent.
 Its numbers go to a sidecar, `docs/manuscript-numbers-clinical.md`, rather than
@@ -479,9 +482,11 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
   people is respected. The run stops unless each block's total equals the rows
   of `dat_long` for that group and the `medication_observations_dat_long_*`
   keys of `docs/manuscript-numbers-current.md`.
-- **Table 5**: predicted probabilities from the adjusted longitudinal models
-  (`glmm_models_cov`; the unadjusted set is the fallback, and the footnote says
-  which was used), one model per side-effect measure: (i) the same medication
+- **Table 5**: predicted probabilities of each outcome category (effectiveness
+  not at all / moderately / very well; remission) from the adjusted
+  longitudinal models (for remission the cached `glmm_models_cov` fits, the
+  unadjusted set as fallback, and the footnote says which was used), one
+  model per side-effect measure: (i) the same medication
   not stopped vs stopped, the participant's mean (`stopped_due_to_se_between`)
   at its observed value, i.e. the within-person contrast; (ii)
   `n_se_between` at its 25th vs 75th percentile over the model's participants,
@@ -493,17 +498,28 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
   rates), and **95% CIs are a parametric bootstrap of the fixed effects** (1,000
   multivariate normal draws from `vcov()`), with differences in percentage
   points from the same draws. The run stops if a contrast does not have the
-  sign of its cached odds ratio (Tables 3a/3d).
-- **Effectiveness is not in Table 5.** `fit_glmm()` keeps no fitted model, but
+  sign of its cached odds ratio (Tables 3a/3d): for effectiveness, the top
+  category moves with the log odds ratio and the bottom one against it.
+- **Where the fitted models come from.** `fit_glmm()` keeps no fitted model, but
   for the lme4 fits one survives: `parameters()` stores the call, whose
   evaluated formula carries the environment of `fit_glmm()` with `m`, `data`,
   `fit_data` and `scales` in it (which is why each cached glmer set is ~18 MB).
   `cached_fit_frame()` recovers it. The `clmm` call names `fm` as a bare
   symbol, so the cached ordinal (effectiveness) sets keep only the
   exponentiated focal estimates and CIs: no thresholds, no covariate
-  coefficients, no covariance. Predicted effectiveness probabilities need a
-  refit of the three adjusted effectiveness side-effect sets; the table,
-  markdown and numbers file say so.
+  coefficients, no covariance. So the three adjusted effectiveness sets
+  (stopped within/between, number of side effects within/between, severity
+  rating) are **refitted** by `fit_clinical_clmms()`: the formula is the cached
+  set's own `model_formula`; the frame is built as `src/02` builds
+  `dat_long_glmm` (`coerce_glmm_predictor()`, now in `lib/02.fit_funs.r` and
+  shared by both scripts, then `add_within_between()`), with `fit_glmm()`'s
+  complete cases and no scaling (as for every clmm). The run stops unless the
+  rebuilt rows and participants equal the cached set's N, and unless the
+  refitted odds ratios and CIs equal Table 3a's to two decimals. Each full
+  `clmm` object is saved with its rows in `cache/clinical_fits/<key>.rds`, the
+  key a hash of formula and data, and reused while both are unchanged. The
+  three fits run on `CLINICAL_WORKERS` (default 3) PSOCK workers; fit times are
+  in `docs/manuscript-numbers-clinical.md` (`clinical_fit_minutes_*`).
 
 ### Order of work after a refit
 
@@ -516,7 +532,10 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
 4. `Rscript src/06.clinical_quantities.r > logs/clinical_<date>.log 2>&1`, after
    2 (it writes into the file 2 rewrites) and after 3 (it checks Table 4's
    margins against 3's medication counts): Tables 4 and 5 and
-   `docs/manuscript-numbers-clinical.md`. About 1.5 minutes.
+   `docs/manuscript-numbers-clinical.md`. A few minutes once
+   `cache/clinical_fits/` holds the three effectiveness fits; after a refit
+   that changes their data, the first run refits them (20-50 minutes each,
+   in parallel).
 5. `Rscript src/03.results_plot.r > logs/plots_<date>.log 2>&1`: the figures.
 6. Copy the tables and numbers into the manuscript from
    `docs/manuscript-tables/*.html`, `docs/manuscript-numbers-current.md` and
