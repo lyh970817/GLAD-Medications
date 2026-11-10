@@ -50,7 +50,8 @@ predictor_groups_list <- list(
     "time",
     "start_age",
     "cumulative_med_count",
-    # Their within/between terms, as fitted in the unadjusted GLMMs
+    # Their within/between terms, as fitted in the unadjusted GLMMs and, as
+    # their own focal sets, in the adjusted ones (user ruling 2026-11-10)
     within_between_terms(c("start_age", "cumulative_med_count")),
     "bmi",
     "audit",

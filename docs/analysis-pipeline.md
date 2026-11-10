@@ -277,20 +277,46 @@ within a person. So the decomposed sets are:
 | Set | Decomposed focal predictors |
 |---|---|
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
-| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `start_age`, `cumulative_med_count` (all four outcomes, one extra set each, see below); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 
-`start_age` and `cumulative_med_count` also vary within person, but in the
-adjusted sets they are **adjustment covariates and stay as they are**: they are
-entered undecomposed, and only focal sets are decomposed.
+`start_age` and `cumulative_med_count` are also **adjustment covariates** in
+the adjusted sets. Since 2026-11-10 (user ruling) they play both roles there:
+
+- In every ordinary focal set of an adjusted family they are covariates and
+  are entered **undecomposed**, as before.
+- Each of them also gets **one focal set of its own** per outcome, its within
+  and between terms, adjusted for all the other covariates of that family
+  (sex, PHQ-9, the other of the two, plus family history, the class dummies
+  or the cohort in the sensitivity families) but **not for its own whole
+  version**. `get_adjusted_indeps_list_for_dep()` keeps the single-variable set
+  of a competing covariate that is in `WITHIN_BETWEEN_VARS` (appended after the
+  other sets, so every existing set keeps its position), the caller decomposes
+  it, and `fit_family()` gives each job its own covariates through
+  `covs_for_set()` (`lib/09.within_between.r`), which drops a covariate whose
+  two terms are the focal set. For every other set `covs_for_set()` returns the
+  family's covariates unchanged, in the same order, so their cache keys and
+  cached fits are untouched. That is 2 predictors x 4 outcomes x 4 adjusted
+  families = 32 models.
+
 `decompose_indeps_list()` runs after `get_adjusted_indeps_list_for_dep()` has
-removed the covariates from the focal list, so a decomposed two-term set cannot
-slip past that filter.
+removed the other covariates from the focal list, so a decomposed two-term set
+cannot slip past that filter. Note that `drop_covariate_terms()` matches on
+prefix: the focal `start_age_within` would be dropped by a covariate named
+`start_age`, which is a second reason the own-variable set must not carry its
+whole version among its covariates.
 
 The two terms carry the predictor's label with " (within person)" and
 " (between persons)" appended, e.g. "Number of Side Effects (within person)".
-`src/03.results_plot.r` puts both in the predictor's own panel group, and
-`src/04.manuscript_tables.r` shows both rows in the supplementary tables (and
-whichever is significant in the Results tables), with a footnote. The
+`src/03.results_plot.r` puts both in the predictor's own panel group (for
+start age and the cumulative medication count that is
+`*_Demographics_Lifestyle`, now in the adjusted `glmm_*_cov_*` panels too, at
+the bottom of the panel), and `src/04.manuscript_tables.r` shows both rows in
+the supplementary tables (and whichever is significant in the Results tables),
+with a footnote; in Tables 2a, 2c, 3a and 3d and S2a, S2c, S3a, S3d the
+start-age and cumulative-count rows now carry an adjusted estimate, and in
+S4a–S4d and S5a–S5d they appear as rows. `src/05.manuscript_numbers.r`
+reports the main adjusted estimates as
+`adjusted_<outcome>_{start_age,cumulative_med_count}_{within,between}`. The
 legacy per-participant models are unaffected: their predictors are constant
 within person by construction.
 
@@ -301,7 +327,11 @@ sensitivity set adds family history (`fh_diagnosis_types`, formerly
 `n_relatives`). Legacy adjustment set: `sex`, `avg_start_age`,
 `fh_diagnosis_types`. These are **covariate-only** — `get_adjusted_indeps_list_for_dep()`
 strips them from the focal predictor list so a variable never competes with
-itself, and `drop_covariate_terms()` removes them from the output tables
+itself — with one exception: the two GLMM covariates that vary within person
+(`start_age`, `cumulative_med_count`) also have one decomposed focal set each,
+adjusted for the other covariates only (see "Within/between decomposition").
+So in the GLMM tables only `sex` (and, in the family-history set,
+`fh_diagnosis_types`) lacks an adjusted estimate. `drop_covariate_terms()` removes the covariates from the output tables
 (matching on prefix, so expanded factor terms like `sexFemale` are caught too).
 
 They remain in the fitted model; they are only absent from the reported rows.
@@ -340,7 +370,9 @@ drug-class dummies (SSRI the reference) added to the covariates. Class is
   analysis": class-scoped rows and participants, and the four outcomes × four
   class contrasts).
 The GLMM covariates `start_age` and `cumulative_med_count` vary within person
-and are entered undecomposed (see "Within/between decomposition").
+and are entered undecomposed, except in their own decomposed focal sets (see
+"Within/between decomposition"); their within/between means are recomputed
+over the class-scoped rows like the others.
 
 ### Survey-cohort sensitivity set (`glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`)
 
@@ -382,7 +414,9 @@ adjusted set, counted as lost, gained and total, with the associations named.
 They are computed on the **unrounded** p values in the cached models; a count
 read off the tables, which round p to three decimals, can misplace a p near
 0.05. A parameter estimated in only one set (the class or cohort contrasts) is
-not matched.
+not matched. Since 2026-11-10 the matched associations include the adjusted
+within- and between-person rows of start age and the cumulative medication
+count, which every adjusted family now estimates.
 
 ## Products
 

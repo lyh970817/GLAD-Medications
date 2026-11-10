@@ -249,8 +249,9 @@ WITHIN_BETWEEN_NOTE <- paste0(
   "is split into the medication's deviation from the participant's own mean (within person) and ",
   "that mean (between persons), fitted together in one model with the participant random intercept; ",
   "the within-person term is informed only by participants with two or more medications. ",
-  "Start age and cumulative medication count are adjustment covariates in the adjusted models and ",
-  "enter them undecomposed."
+  "In the adjusted models start age and cumulative medication count are adjustment covariates, entered ",
+  "undecomposed, except in their own model, where each is split in the same way and adjusted for the ",
+  "other covariates but not for itself."
 )
 is_within_between_row <- function(parameter) {
   grepl("\\((within person|between persons)\\)$", parameter)
@@ -275,6 +276,10 @@ md <- c(
   "parentheses are significant after adjustment but not before. The longitudinal",
   paste0("models are adjusted for ", ADJUSTMENT_SETS[["glmm"]], "; the"),
   paste0("per-participant models for ", ADJUSTMENT_SETS[["legacy"]], "."),
+  "A row with no adjusted estimate is an adjustment covariate. In the longitudinal",
+  "models that is sex only: starting age and cumulative medication count have",
+  "adjusted within- and between-person estimates from a model of their own,",
+  "adjusted for the other covariates.",
   ""
 )
 

@@ -23,7 +23,10 @@
 # effects. Every other focal predictor (and `se_rating`) is constant within a
 # participant. The decomposition replaces a focal predictor set only; a
 # within-person covariate in an adjustment set (start age and the cumulative
-# medication count in the adjusted models) is entered as it is.
+# medication count in the adjusted models) is entered as it is, except in its
+# own focal set (user ruling 2026-11-10): there it is entered as its two terms
+# and its whole version is dropped from that set's covariates
+# (covs_for_set()).
 WITHIN_BETWEEN_VARS <- c("start_age", "cumulative_med_count", "n_se", "stopped_due_to_se")
 
 # The two term names, within first, for each of `vars`.
@@ -53,6 +56,18 @@ decompose_indeps_list <- function(indeps_list, vars = WITHIN_BETWEEN_VARS) {
   lapply(indeps_list, function(s) {
     if (length(s) == 1 && s %in% vars) within_between_terms(s) else s
   })
+}
+
+# The covariates of one focal set: `covs` without the whole version of any of
+# `vars` whose within and between terms are both in the focal set, so that a
+# decomposed covariate is not adjusted for itself. Every other set gets `covs`
+# back unchanged (same order), which keeps its cache key.
+covs_for_set <- function(covs, indeps, vars = WITHIN_BETWEEN_VARS) {
+  own <- vars[vapply(vars, function(v) all(within_between_terms(v) %in% indeps), logical(1))]
+  if (is.null(covs) || !length(own)) {
+    return(covs)
+  }
+  setdiff(covs, own)
 }
 
 # "<label> (within person)" and "<label> (between persons)" for each of

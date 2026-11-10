@@ -246,7 +246,15 @@ get_adjusted_indeps_list_for_dep <- function(dep, competing = compete_indeps) {
   # In adjusted models, the competing set are covariates only (not focal
   # predictors). Family history is not in the main competing set, so it stays
   # a focal predictor here and is reported adjusted for the others.
-  discard(dep_indeps, ~ length(.x) == 1 && .x %in% competing)
+  is_competing <- function(s) length(s) == 1 && s %in% competing
+  # Exception (user ruling 2026-11-10): a competing covariate that varies
+  # within participant (start age, cumulative medication count) also gets one
+  # focal set of its own, which the caller decomposes into its within and
+  # between terms and fit_family() fits adjusted for the other covariates but
+  # not for its own whole version (covs_for_set()). These sets go at the end,
+  # so every existing set keeps its position.
+  own_wb <- function(s) is_competing(s) && s %in% WITHIN_BETWEEN_VARS
+  c(discard(dep_indeps, is_competing), keep(dep_indeps, own_wb))
 }
 
 # coerce_glmm_predictor() is in lib/02.fit_funs.r, shared with
@@ -274,9 +282,11 @@ dat_long_glmm <- dat_long %>%
 # effects, stopped because of side effects) is fitted as the two-term set
 # c(X_within, X_between) instead, in the same model, with the random intercept
 # kept. This is applied after get_adjusted_indeps_list_for_dep() has removed the
-# covariates from the focal list, so start age and the cumulative medication
-# count are decomposed only where they are focal (the unadjusted set) and are
-# entered undecomposed wherever they are adjustment covariates.
+# covariates from the focal list. Start age and the cumulative medication count
+# are focal in every set: in the unadjusted set as usual, and in each adjusted
+# set as one extra set each (user ruling 2026-11-10), adjusted for the other
+# covariates; in every other adjusted set they are covariates, entered
+# undecomposed.
 hybrid_indeps_for <- function(indeps_list_for) {
   function(dep) decompose_indeps_list(indeps_list_for(dep), WITHIN_BETWEEN_VARS)
 }
@@ -351,19 +361,26 @@ fit_set_cached <- function(dep, indeps, covs, data) {
 glmm_workers <- as.integer(Sys.getenv("GLMM_WORKERS", "5"))
 
 fit_family <- function(deps, indeps_list_for, covs, data) {
+  # Each job carries its own covariates: `covs`, except that a decomposed
+  # covariate's own focal set (start age or the cumulative medication count as
+  # its within and between terms) drops that covariate's whole version
+  # (covs_for_set()). Every other set gets `covs` unchanged, so its cache key,
+  # and therefore its cached fit, is the same as before.
   jobs <- unlist(
     map(deps, function(dep) {
-      map(indeps_list_for(dep), function(indeps) list(dep = dep, indeps = indeps))
+      map(indeps_list_for(dep), function(indeps) {
+        list(dep = dep, indeps = indeps, covs = covs_for_set(covs, indeps, WITHIN_BETWEEN_VARS))
+      })
     }),
     recursive = FALSE
   )
 
-  todo <- sum(!vapply(jobs, function(j) set_is_cached(j$dep, j$indeps, covs, data), logical(1)))
+  todo <- sum(!vapply(jobs, function(j) set_is_cached(j$dep, j$indeps, j$covs, data), logical(1)))
   message("  ", length(jobs), " model sets, ", todo, " to fit, on ", glmm_workers, " workers")
 
   fits <- if (todo == 0) {
     # Everything is already on disk; no point paying for workers.
-    map(jobs, function(job) fit_set_cached(job$dep, job$indeps, covs, data))
+    map(jobs, function(job) fit_set_cached(job$dep, job$indeps, job$covs, data))
   } else {
     cl <- parallel::makePSOCKcluster(glmm_workers)
     on.exit(parallel::stopCluster(cl), add = TRUE)
@@ -386,15 +403,16 @@ fit_family <- function(deps, indeps_list_for, covs, data) {
       envir = globalenv()
     )
 
-    # covs and data are passed as arguments rather than captured: a worker gets
-    # its own global environment, so anything the closure picks up from the
-    # master's globals is simply absent when it runs.
+    # The covariates travel in each job and data is passed as an argument
+    # rather than captured: a worker gets its own global environment, so
+    # anything the closure picks up from the master's globals is simply absent
+    # when it runs.
     #
     # Load balancing matters: the ordinal Effectiveness fits take minutes while
     # the binomial ones take seconds.
-    parallel::parLapplyLB(cl, jobs, function(job, covs, data) {
-      fit_set_cached(job$dep, job$indeps, covs, data)
-    }, covs = covs, data = data)
+    parallel::parLapplyLB(cl, jobs, function(job, data) {
+      fit_set_cached(job$dep, job$indeps, job$covs, data)
+    }, data = data)
   }
 
   # Regroup the flat job list back into one list of sets per outcome
@@ -410,7 +428,9 @@ glmm_models <- fit_family(
 
 # 2. Adjusted for sex, start age, cumulative medication count and phq9.
 # The competing set are covariates only here, and are removed from the focal
-# predictor list by get_adjusted_indeps_list_for_dep().
+# predictor list by get_adjusted_indeps_list_for_dep(), except that start age
+# and the cumulative medication count each get one extra focal set as their
+# within and between terms, adjusted for the other covariates (also in 3-5).
 glmm_models_cov <- fit_family(
   glmm_deps, hybrid_indeps_for(function(dep) get_adjusted_indeps_list_for_dep(dep, compete_indeps)),
   covs = c(compete_indeps, "phq9"), data = dat_long_glmm

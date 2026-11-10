@@ -348,6 +348,45 @@ for (obj in c("glmm_models", "glmm_models_cov")) {
   }
 }
 
+# Adjusted within-person and between-person estimates of the two medication-level
+# adjustment covariates (user ruling 2026-11-10): in `glmm_models_cov` each of
+# start age and the cumulative medication count has one focal set of its own,
+# its within and between terms, adjusted for the other covariates (sex, PHQ-9
+# and the other of the two) but not for its own whole version.
+wb_covariates <- c(start_age = "start age", cumulative_med_count = "cumulative medication count")
+if (all(objects_present("glmm_models_cov"))) {
+  adj <- multi_adjust(glmm_models_cov)
+  for (v in names(wb_covariates)) {
+    terms <- within_between_terms(v)
+    term_labels <- within_between_labels(v, labels)
+    others_text <- paste(c("sex", unname(wb_covariates[setdiff(names(wb_covariates), v)]), "PHQ-9"), collapse = ", ")
+    for (dep in names(adj)) {
+      st <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), adj[[dep]])
+      if (!length(st)) {
+        add(paste0("adjusted_", cohort_key(dep), "_", v), "not fitted",
+          paste0("Adjusted within/between estimates of ", wb_covariates[[v]], " for ", dep))
+        next
+      }
+      st <- st[[1]]
+      effect <- if (dep == "Number of Side Effects") "RR" else "OR"
+      conv <- attr(st, "converged")
+      for (k in seq_along(terms)) {
+        r <- st[st$Parameter == term_labels[[k]], ]
+        ci <- r[[grep("^Coeff_CI", colnames(r), value = TRUE)[1]]]
+        pv <- r[[grep("^p", colnames(r), value = TRUE)[1]]]
+        add(paste0("adjusted_", cohort_key(dep), "_", terms[[k]]),
+          paste0(ci, ", p = ", fmt_p(pv), if (!is.null(conv) && !isTRUE(conv)) " (convergence warning)" else ""),
+          paste0(effect, " [95% CI], Bonferroni-corrected p (x", length(adj), "), for ", term_labels[[k]], " on ", dep,
+            "; one model with both terms, adjusted for ", others_text, " (not for ", wb_covariates[[v]],
+            " itself), N = ", commafy(attr(st, "n")[1]), " observations / ", commafy(attr(st, "n_id")), " participants"))
+      }
+    }
+  }
+} else {
+  add("adjusted_within_between_covariates", skipped("`glmm_models_cov` from src/02.regression.r"),
+    "Adjusted within/between estimates of start age and cumulative medication count")
+}
+
 # Sensitivity analysis: the adjusted models refitted with family history added
 # to the covariates (glmm_models_cov_famhist) against the main adjusted models.
 if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_famhist")))) {
