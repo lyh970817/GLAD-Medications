@@ -22,8 +22,9 @@
 #
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
 # HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
-# supp_1a-2e, and the drug-class tables supp_class_1a, 1c, 2a, 2d; file names
-# predate the renumbering, see above). Set
+# supp_1a-2e, the drug-class tables supp_class_1a, 1c, 2a, 2d, and the
+# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy; file names predate
+# the renumbering, see above). Set
 # MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
 #
@@ -44,7 +45,10 @@ dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 family_needs <- list(
   glmm = c("glmm_models", "glmm_models_cov"),
   legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete"),
-  class = c("glmm_models_cov", "glmm_models_cov_class")
+  class = c("glmm_models_cov", "glmm_models_cov_class"),
+  cohort = c("glmm_models_cov", "glmm_models_cov_cohort"),
+  cohort_legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete",
+    "sef_models_cohort", "eff_models_cohort")
 )
 family_missing <- map(family_needs, ~ .x[!objects_present(.x)])
 for (f in names(family_missing)) {
@@ -691,6 +695,167 @@ md <- c(
     "`results/glmm_medications_cov_class.xlsx`. Supplementary Tables S4a-S4d (numbering provisional)."
   ),
   class_index
+)
+
+# ------------------------------------------------------------------------------
+# Supplementary Tables S5a-S5e (files supp_cohort_1a, 1c, 2a, 2d, legacy): survey cohort
+# ------------------------------------------------------------------------------
+# Sensitivity analysis (user ruling 2026-11-09, "Cohort can be included for
+# sensitivity analyses"): the adjusted models with the survey cohort (SA8 vs
+# Baseline) added to the covariates, beside the main adjusted estimates. S5a-S5d
+# are the four longitudinal outcomes (`glmm_models_cov_cohort`, full frame, the
+# same rows as the main adjusted models), S5e the four per-participant outcomes
+# (`sef_models_cohort`, `eff_models_cohort`) in one table. The cohort contrast
+# row comes from the set per outcome that has the cohort as its focal
+# predictor. The S5 numbering is provisional.
+cohort_counts <- function(d, rows = TRUE) {
+  tab <- if (rows) table(d$cohort) else table(d$cohort[!duplicated(d$ID)])
+  paste0(names(tab), " ", commafy(as.integer(tab)), collapse = ", ")
+}
+cohort_long_note <- paste0(
+  "Survey cohort: Baseline (GLAD sign-up with the standalone medication questionnaire) or SA8 (the later ",
+  "sign-up survey); medication observations ", cohort_counts(dat_long), "; participants ",
+  cohort_counts(dat_long, rows = FALSE), "."
+)
+cohort_person_note <- paste0(
+  "Survey cohort: Baseline (GLAD sign-up with the standalone medication questionnaire) or SA8 (the later ",
+  "sign-up survey); participants ", cohort_counts(dat, rows = FALSE), "."
+)
+
+cohort_supp_footnote <- function(tab, spec) {
+  failed <- attr(tab, "n_failed")
+  paste0(
+    "Sensitivity analysis by survey cohort. Left: the main adjusted longitudinal models (adjusted for ",
+    ADJUSTMENT_SETS[["glmm"]], "). Right: the same models, on the same frame, with survey cohort (SA8 vs ",
+    "Baseline) added to the covariates; the survey-cohort row is from one model per outcome with the cohort ",
+    "as its focal predictor and the same covariates. ", cohort_long_note, " ",
+    spec$effect, " with nominal 95% CI; p values are Bonferroni-corrected for the four longitudinal outcomes. ",
+    "N is the complete-case sample of each model (medication observations / participants). ",
+    "–: not estimated in that model.",
+    if (any(is_within_between_row(tab$Parameter))) paste0(" ", WITHIN_BETWEEN_NOTE) else "",
+    if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
+    if (sum(failed)) {
+      paste0(
+        " Not shown: ", failed[["unadjusted"]], " main and ", failed[["adjusted"]],
+        " cohort-adjusted predictor set(s) that could not be fitted."
+      )
+    } else {
+      ""
+    }
+  )
+}
+
+cohort_index <- character()
+if (length(family_missing$cohort)) {
+  cohort_index <- c(cohort_index, "", skip_note("cohort"))
+} else {
+  cohort_main <- multi_adjust(glmm_models_cov)
+  cohort_fam <- multi_adjust(glmm_models_cov_cohort)
+  glmm_specs <- Filter(function(sp) sp$family == "glmm", TABLES)
+  for (j in seq_along(glmm_specs)) {
+    spec <- glmm_specs[[j]]
+    sid <- paste0("S5", letters[j])
+    title <- sub("^Variables significantly associated with", "All adjusted associations with", spec$title)
+    title <- paste0(title, ", with and without adjustment for survey cohort")
+    tab <- build_supp_table(cohort_main, cohort_fam, spec$outcome)
+    if (is.null(tab)) {
+      message("!! no survey-cohort table for ", sid, " (", spec$outcome, ")")
+      next
+    }
+    foot <- cohort_supp_footnote(tab, spec)
+    est <- paste0(spec$effect, " [95% CI]")
+    header <- c("Parameter", paste("Adjusted", est), "p", "N", paste("Adjusted + survey cohort", est), "p", "N")
+    body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
+    file <- paste0("supp_cohort_", spec$id, ".html")
+    writeLines(html_table(header, body, foot), file.path(out_dir, file))
+    cohort_index <- c(
+      cohort_index, "",
+      paste0("#### Supplementary Table ", sid, ": ", title),
+      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      md_table(header, body)
+    )
+    message("  wrote survey-cohort table ", sid, " (", nrow(body), " rows)")
+  }
+}
+
+# S5e: the four per-participant outcomes in one table, an italic heading row
+# per outcome. The Bonferroni factor is the four per-participant outcomes, as
+# in S2b, S3b, S3c and S3e.
+if (length(family_missing$cohort_legacy)) {
+  cohort_index <- c(cohort_index, "", skip_note("cohort_legacy"))
+} else {
+  n_legacy <- length(c(sef_models, eff_models))
+  legacy_main <- multi_adjust(c(sef_models_compete, eff_models_compete), n_deps = n_legacy)
+  legacy_cohort <- multi_adjust(c(sef_models_cohort, eff_models_cohort), n_deps = n_legacy)
+  legacy_specs <- Filter(function(sp) sp$family == "legacy", TABLES)
+  blocks <- map(legacy_specs, function(spec) {
+    tab <- build_supp_table(legacy_main, legacy_cohort, spec$outcome)
+    if (is.null(tab)) {
+      message("!! no survey-cohort rows for S5e (", spec$outcome, ")")
+      return(NULL)
+    }
+    heading <- tibble(
+      Parameter = paste0(spec$outcome, " (", spec$effect, ")"),
+      est_u = "", p_u = "", n_u = "", est_a = "", p_a = "", n_a = "", any_unconverged = FALSE
+    )
+    out <- bind_rows(heading, select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a, any_unconverged))
+    attr(out, "n_failed") <- attr(tab, "n_failed")
+    attr(out, "italic") <- c(TRUE, rep(FALSE, nrow(tab)))
+    out
+  })
+  blocks <- Filter(Negate(is.null), blocks)
+  if (length(blocks)) {
+    tab <- bind_rows(blocks)
+    italic <- unlist(map(blocks, ~ attr(.x, "italic")))
+    failed <- Reduce(`+`, map(blocks, ~ attr(.x, "n_failed")))
+    sid <- "S5e"
+    title <- paste0(
+      "All adjusted associations with the per-participant outcomes (side effect severity rating, benefit ",
+      "rating, number of best aspects, first improvement duration), with and without adjustment for survey cohort"
+    )
+    foot <- paste0(
+      "Sensitivity analysis by survey cohort. Left: the main adjusted per-participant ordinal models (adjusted for ",
+      ADJUSTMENT_SETS[["legacy"]], "). Right: the same models with survey cohort (SA8 vs Baseline) added to the ",
+      "covariates; the survey-cohort row of each outcome is from one model with the cohort as its focal predictor ",
+      "and the same covariates. ", cohort_person_note, " ",
+      "OR with nominal 95% CI; p values are Bonferroni-corrected for the four per-participant outcomes. ",
+      "The mean number of side effects, the side-effect severity rating and treatment discontinuation were each ",
+      "fitted separately (one model per measure) for the three effectiveness outcomes. ",
+      "N is the complete-case sample of each model (participants). –: not estimated in that model.",
+      if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
+      if (sum(failed)) {
+        paste0(
+          " Not shown: ", failed[["unadjusted"]], " main and ", failed[["adjusted"]],
+          " cohort-adjusted predictor set(s) that could not be fitted."
+        )
+      } else {
+        ""
+      }
+    )
+    header <- c("Parameter", "Adjusted OR [95% CI]", "p", "N", "Adjusted + survey cohort OR [95% CI]", "p", "N")
+    body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
+    file <- "supp_cohort_legacy.html"
+    writeLines(html_table(header, body, foot, italic_rows = italic), file.path(out_dir, file))
+    cohort_index <- c(
+      cohort_index, "",
+      paste0("#### Supplementary Table ", sid, ": ", title),
+      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      md_table(header, body)
+    )
+    message("  wrote survey-cohort table ", sid, " (", nrow(body), " rows)")
+  }
+}
+
+md <- c(
+  md, "", "## Sensitivity analysis: survey cohort",
+  "",
+  paste0(
+    "`glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`: the adjusted longitudinal and ",
+    "per-participant models with survey cohort (SA8 vs Baseline) added to the covariates; workbooks ",
+    "`results/glmm_medications_cov_cohort.xlsx` and `results/medications_cov_cohort.xlsx`. Supplementary ",
+    "Tables S5a-S5e (numbering provisional)."
+  ),
+  cohort_index
 )
 
 writeLines(md, md_path)

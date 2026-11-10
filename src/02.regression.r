@@ -12,7 +12,7 @@ reload.project()
 # processes have room. This only clears the session; the cache files stay put.
 rm(list = intersect(
   c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
-    "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
+    "glmm_models_cov_cohort", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
   ls(globalenv())
 ), envir = globalenv())
 invisible(gc())
@@ -162,6 +162,13 @@ compete_indeps <- c(
 # Sensitivity adjustment set: the original one, adding family history back.
 sens_compete_indeps <- c(compete_indeps, "fh_diagnosis_types")
 
+# Survey-cohort sensitivity covariate (user ruling 2026-11-09: "Cohort can be
+# included for sensitivity analyses"). `cohort` (Baseline / SA8) is not in the
+# main adjustment sets; the cohort sets (glmm_models_cov_cohort,
+# sef_models_cohort, eff_models_cohort) add it to the adjusted ones, and one
+# extra set per outcome has it as the focal predictor (SA8 vs Baseline).
+cohort_covariate <- "cohort"
+
 # Define Independent Variable Sets
 # ------------------------------------------------------------------------------
 # Same structure as before, but applied to longitudinal data
@@ -250,7 +257,9 @@ glmm_predictor_vars <- unique(unlist(c(
   cross_outcome_indeps,
   list(compete_indeps),
   list(sens_compete_indeps),
-  list("phq9")
+  list("phq9"),
+  # Two-level factor -> 0/1 (SA8 = 1), so its term is `cohort`, not `cohortSA8`.
+  list(cohort_covariate)
 )))
 
 dat_long_glmm <- dat_long %>%
@@ -446,6 +455,24 @@ glmm_models_cov_class <- fit_family(
   covs = c(compete_indeps, "phq9", drug_class_dummy_columns()), data = dat_long_class
 )
 
+# 5. Sensitivity: survey cohort (user ruling 2026-11-09). The adjusted models of
+# (2) on the same full frame (no row scoping, so the within/between means are
+# those of the main sets), with `cohort` (SA8 vs Baseline) added to the
+# covariates. One further set per outcome has the cohort as its focal
+# predictor, adjusted for the usual covariates; the cohort contrast is reported
+# from it and is a covariate (not reported) everywhere else. The per-set cache
+# means only these sets are fitted; the main sets are untouched.
+glmm_models_cov_cohort <- fit_family(
+  glmm_deps,
+  function(dep) {
+    c(
+      decompose_indeps_list(get_adjusted_indeps_list_for_dep(dep, compete_indeps), WITHIN_BETWEEN_VARS),
+      list(cohort_covariate)
+    )
+  },
+  covs = c(compete_indeps, "phq9", cohort_covariate), data = dat_long_glmm
+)
+
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
 # a model that failed to converge cannot reach a table unnoticed the way the
 # adjusted Remission models did.
@@ -474,7 +501,8 @@ glmm_convergence <- c(
   report_convergence(glmm_models, "unadjusted"),
   report_convergence(glmm_models_cov, "adjusted"),
   report_convergence(glmm_models_cov_famhist, "sensitivity"),
-  report_convergence(glmm_models_cov_class, "drug-class sensitivity")
+  report_convergence(glmm_models_cov_class, "drug-class sensitivity"),
+  report_convergence(glmm_models_cov_cohort, "cohort sensitivity")
 )
 
 # Save Results
@@ -483,6 +511,7 @@ cache("glmm_models")
 cache("glmm_models_cov")
 cache("glmm_models_cov_famhist")
 cache("glmm_models_cov_class")
+cache("glmm_models_cov_cohort")
 
 write_xlsx_tab(bind_models(multi_adjust(glmm_models)),
   file = "./results/glmm_medications.xlsx", overwrite = TRUE
@@ -514,6 +543,14 @@ write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_class))),
   file = "./results/glmm_medications_sig_cov_class.xlsx", overwrite = TRUE
 )
 
+# Sensitivity analysis: adjusted models with survey cohort added
+write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_cohort)),
+  file = "./results/glmm_medications_cov_cohort.xlsx", overwrite = TRUE
+)
+write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_cohort))),
+  file = "./results/glmm_medications_sig_cov_cohort.xlsx", overwrite = TRUE
+)
+
 # ------------------------------------------------------------------------------
 # Additional non-longitudinal models (not suitable for GLMM random-effects setup)
 # ------------------------------------------------------------------------------
@@ -526,8 +563,11 @@ fit_model_non_glmm <- function(dep, indeps_list, covs = NULL, data) {
 
     m <- fit(dep, all_fixed, data)
 
-    if (!is.null(covs)) {
-      m <- drop_covariate_terms(m, covs)
+    # A covariate that is also the focal set (the cohort set's cohort contrast)
+    # is reported, as in fit_set_cached(); every other set has no overlap.
+    real_covs <- setdiff(covs, indeps)
+    if (length(real_covs)) {
+      m <- drop_covariate_terms(m, real_covs)
     }
 
     m <- format_model(m)
@@ -645,10 +685,33 @@ eff_models_compete <- fit_or_cached("eff_models_compete", {
   )
 })
 
+# Sensitivity: survey cohort (user ruling 2026-11-09). The adjusted sets above
+# with `cohort` (SA8 vs Baseline) added to the covariates, plus one set per
+# outcome with the cohort as its focal predictor. Minutes to fit.
+sef_models_cohort <- fit_or_cached("sef_models_cohort", {
+  fit_all_non_glmm(
+    nonlong_sef_deps,
+    c(get_adjusted_nonlong_indeps(nonlong_indeps_sef), list(cohort_covariate)),
+    covs = c(nonlong_compete_indeps, cohort_covariate),
+    data = dat_nonlong_sef
+  )
+})
+
+eff_models_cohort <- fit_or_cached("eff_models_cohort", {
+  fit_all_non_glmm(
+    nonlong_eff_deps,
+    c(get_adjusted_nonlong_indeps(nonlong_indeps_eff), list(cohort_covariate)),
+    covs = c(nonlong_compete_indeps, cohort_covariate),
+    data = dat_nonlong_eff
+  )
+})
+
 cache("sef_models")
 cache("sef_models_compete")
 cache("eff_models")
 cache("eff_models_compete")
+cache("sef_models_cohort")
+cache("eff_models_cohort")
 
 write_xlsx_tab(bind_models(multi_adjust(c(sef_models, eff_models))),
   file = "./results/medications.xlsx", overwrite = TRUE
@@ -662,4 +725,11 @@ write_xlsx_tab(bind_models(multi_adjust(c(sef_models_compete, eff_models_compete
 )
 write_xlsx_tab(bind_models(only_sig(multi_adjust(c(sef_models_compete, eff_models_compete)))),
   file = "./results/medications_sig_cov.xlsx", overwrite = TRUE
+)
+
+write_xlsx_tab(bind_models(multi_adjust(c(sef_models_cohort, eff_models_cohort))),
+  file = "./results/medications_cov_cohort.xlsx", overwrite = TRUE
+)
+write_xlsx_tab(bind_models(only_sig(multi_adjust(c(sef_models_cohort, eff_models_cohort)))),
+  file = "./results/medications_sig_cov_cohort.xlsx", overwrite = TRUE
 )

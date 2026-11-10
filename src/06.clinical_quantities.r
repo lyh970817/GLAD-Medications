@@ -48,7 +48,10 @@ reload.project()
 
 # Only the main adjusted and unadjusted sets are used; the sensitivity sets are
 # large and not needed here.
-rm(list = intersect(c("glmm_models_cov_famhist", "glmm_models_cov_class"), ls(globalenv())), envir = globalenv())
+rm(list = intersect(
+  c("glmm_models_cov_famhist", "glmm_models_cov_class", "glmm_models_cov_cohort"),
+  ls(globalenv())
+), envir = globalenv())
 invisible(gc())
 
 docs_dir <- Sys.getenv("MANUSCRIPT_OUT_DIR", "docs")

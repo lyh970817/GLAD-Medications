@@ -90,7 +90,9 @@ enters:
   people in the full cohort, none a taker).
 
 `cohort` (Baseline / SA8) is a column of both frames for descriptive tables.
-It is **not a model term** (ruling `wave` = c).
+It is **not a term of the main models** (ruling `wave` = c); since 2026-11-09
+it is a covariate in the survey-cohort sensitivity sets only (see "Survey-cohort
+sensitivity set").
 
 ### Contract changes relative to the old frames
 
@@ -205,7 +207,7 @@ compared.
 | Unit of analysis | one row per participant × medication episode | one row per participant |
 | Random effects | participant random intercept, `(1 \| ID)` | none |
 | Fitting helper | `fit_glmm()` in `lib/02.fit_funs.r` | `fit_prop()` / `fit_hurdle()` |
-| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
+| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
 | Data frame | `dat_long_glmm` | `dat_nonlong_sef`, `dat_nonlong_eff` |
 
 Both live in `src/02.regression.r`; the legacy block starts under the comment
@@ -275,7 +277,7 @@ within a person. So the decomposed sets are:
 | Set | Decomposed focal predictors |
 |---|---|
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
-| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+| adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 
 `start_age` and `cumulative_med_count` also vary within person, but in the
 adjusted sets they are **adjustment covariates and stay as they are**: they are
@@ -340,6 +342,48 @@ drug-class dummies (SSRI the reference) added to the covariates. Class is
 The GLMM covariates `start_age` and `cumulative_med_count` vary within person
 and are entered undecomposed (see "Within/between decomposition").
 
+### Survey-cohort sensitivity set (`glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`)
+
+Since 2026-11-09 (user ruling: "Cohort can be included for sensitivity
+analyses"). The adjusted models with `cohort` (SA8 vs Baseline; a two-level
+factor coded 0/1, SA8 = 1, label "Survey cohort (SA8 vs. Baseline)") added to
+the covariates. Cohort is **not** in the main sets.
+
+- Longitudinal: `glmm_models_cov` (with its within/between terms) refitted on
+  the **full** `dat_long` frame, with no row scoping, so the rows and the
+  within/between means are those of the main adjusted set. `cohort` is never
+  missing in the frames, so each model's N equals its main counterpart's.
+- Per participant: `sef_models_compete` / `eff_models_compete` with `cohort`
+  added to the covariates (`dat` frame).
+- In both, one extra set per outcome has `cohort` as its **focal** set, adjusted
+  for the usual covariates; the cohort contrast is reported from it, and in
+  every other set the cohort is a covariate and is not reported. So each
+  outcome has one more set than in the main adjusted set. (In the
+  per-participant block `fit_model_non_glmm()` therefore drops only the
+  covariates that are not the focal set, as `fit_set_cached()` does.)
+- The longitudinal sets use the per-set cache in `cache/glmm_fits/`; the
+  per-participant ones are cached by name (`fit_or_cached()`) and take minutes.
+- Reported in `results/glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`
+  and `results/medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`; in
+  Supplementary Tables S5a–S5d (`supp_cohort_{1a,1c,2a,2d}.html`, main adjusted
+  vs cohort-adjusted, one per longitudinal outcome) and S5e
+  (`supp_cohort_legacy.html`, the four per-participant outcomes in one table),
+  numbering provisional; and in `docs/manuscript-numbers-current.md`, section
+  "Survey-cohort sensitivity analysis": the cohort contrast per outcome
+  (`cohort_<outcome>_sa8_vs_baseline`) and the significance changes against the
+  main adjusted set.
+
+**Significance changes** (`src/05.manuscript_numbers.r`,
+`add_significance_changes()`): for the cohort set (longitudinal and
+per-participant separately) and for the drug-class set
+(`class_sensitivity_*`), the associations matched by outcome and parameter
+label whose Bonferroni-corrected significance (p ≤ 0.05) differs from the main
+adjusted set, counted as lost, gained and total, with the associations named.
+They are computed on the **unrounded** p values in the cached models; a count
+read off the tables, which round p to three decimals, can misplace a p near
+0.05. A parameter estimated in only one set (the class or cohort contrasts) is
+not matched.
+
 ## Products
 
 Everything below except `docs/` is **gitignored** and not in the repository.
@@ -352,8 +396,10 @@ Everything below except `docs/` is **gitignored** and not in the repository.
 | `glmm_medications_cov.xlsx` / `_sig_cov.xlsx` | GLMM adjusted |
 | `glmm_medications_cov_famhist.xlsx` / `_sig_cov_famhist.xlsx` | GLMM adjusted, family history added (sensitivity) |
 | `glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx` | GLMM adjusted, class-scoped frame with drug class (sensitivity) |
+| `glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | GLMM adjusted, survey cohort added (sensitivity) |
 | `medications.xlsx` / `_sig.xlsx` | legacy unadjusted |
 | `medications_cov.xlsx` / `_sig_cov.xlsx` | legacy adjusted |
+| `medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | legacy adjusted, survey cohort added (sensitivity) |
 | `medications_sig_final.xlsx` | **irreplaceable — see below** |
 
 `medications_sig_final.xlsx` (dated 2025-12-04) is the only surviving copy of
@@ -401,8 +447,8 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete` |
-| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class` where present |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
 | `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:

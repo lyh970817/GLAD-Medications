@@ -378,6 +378,59 @@ if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_famhist")))) {
     "Family-history sensitivity analysis: coverage, median change in log estimate, significance changes")
 }
 
+# Significance changes between the main adjusted set and a sensitivity set,
+# counted on the unrounded Bonferroni-corrected p values carried by the cached
+# models (the tables print p rounded to three decimals, so a count read off
+# them can misplace a p near 0.05). Associations are matched by outcome and
+# parameter label; a parameter estimated in only one of the two sets (the
+# sensitivity set's own contrasts) is not matched. For a hurdle model the first
+# (logistic) part is used, as in the tables.
+flat_p <- function(models, n_deps = length(models)) {
+  imap_dfr(multi_adjust(models, n_deps = n_deps), function(sets, dep) {
+    map_dfr(sets, function(s) {
+      if (is.null(s) || !nrow(s)) {
+        return(NULL)
+      }
+      pc <- grep("^p", colnames(s), value = TRUE)[1]
+      cc <- grep("^Coefficient", colnames(s), value = TRUE)[1]
+      tibble(dep = dep, Parameter = s$Parameter, est = s[[cc]], p = s[[pc]], n = as.numeric(attr(s, "n")[1]))
+    })
+  })
+}
+add_significance_changes <- function(prefix, main, sens, what) {
+  both <- inner_join(main, sens, by = c("dep", "Parameter"), suffix = c("_main", "_sens"), multiple = "first")
+  sig_main <- both$p_main <= 0.05
+  sig_sens <- both$p_sens <= 0.05
+  lost <- which(sig_main & !sig_sens)
+  gained <- which(!sig_main & sig_sens)
+  name_of <- function(i) {
+    if (!length(i)) {
+      return("none")
+    }
+    paste0(
+      both$dep[i], ": ", clean_label(both$Parameter[i]), " (p ", fmt_p(both$p_main[i]), " -> ", fmt_p(both$p_sens[i]), ")",
+      collapse = "; "
+    )
+  }
+  n_matched <- sum(!is.na(sig_main) & !is.na(sig_sens))
+  add(paste0(prefix, "_significance_lost"), commafy(length(lost)),
+    paste0("Matched associations significant (Bonferroni-corrected p <= 0.05, unrounded) in the main adjusted ",
+      what, " models and not in the sensitivity set"))
+  add(paste0(prefix, "_significance_gained"), commafy(length(gained)),
+    paste0("Matched associations not significant in the main adjusted ", what,
+      " models and significant in the sensitivity set (unrounded p)"))
+  add(paste0(prefix, "_significance_changes"), paste0(commafy(length(lost) + length(gained)), " of ", commafy(n_matched)),
+    paste0("Matched ", what, " associations whose significance status differs between the main adjusted and the ",
+      "sensitivity set (lost + gained), of all matched associations; unrounded Bonferroni-corrected p"))
+  add(paste0(prefix, "_significance_lost_associations"), name_of(lost),
+    "Outcome: parameter (p main -> p sensitivity, Bonferroni-corrected) of the associations that lost significance")
+  add(paste0(prefix, "_significance_gained_associations"), name_of(gained),
+    "Outcome: parameter (p main -> p sensitivity, Bonferroni-corrected) of the associations that gained significance")
+  add(paste0(prefix, "_median_abs_change_log_estimate"), fmt_num(median(abs(log(both$est_sens) - log(both$est_main)), na.rm = TRUE), 3),
+    paste0("Median absolute change in the log odds (rate) ratio between the main adjusted and the sensitivity ",
+      what, " models, over matched associations"))
+}
+
 # ------------------------------------------------------------------------------
 section <- "Drug-class sensitivity analysis"
 # ------------------------------------------------------------------------------
@@ -419,9 +472,74 @@ if (all(objects_present("glmm_models_cov_class"))) {
           commafy(attr(s, "n")[1]), " observations / ", commafy(attr(s, "n_id")), " participants"))
     }
   }
+  # Matched on the parameter labels; the class-scoped models have fewer rows, so
+  # a change can reflect the scope as well as the class covariates.
+  if (all(objects_present("glmm_models_cov"))) {
+    add_significance_changes("class_sensitivity", flat_p(glmm_models_cov), flat_p(glmm_models_cov_class),
+      "longitudinal")
+  }
 } else {
   add("class_effects", skipped("`glmm_models_cov_class` from src/02.regression.r"),
     "Drug-class contrasts (TCA, SNRI, NaSSA, SARI vs SSRI) for the four longitudinal outcomes")
+}
+
+# ------------------------------------------------------------------------------
+section <- "Survey-cohort sensitivity analysis"
+# ------------------------------------------------------------------------------
+# The adjusted models with the survey cohort (SA8 vs Baseline) added to the
+# covariates (user ruling 2026-11-09): `glmm_models_cov_cohort` on the full
+# longitudinal frame, `sef_models_cohort` / `eff_models_cohort` per participant.
+# The cohort contrast of each outcome comes from the set that has the cohort as
+# its focal predictor.
+cohort_term <- labels[["cohort"]]
+add_cohort_contrasts <- function(models, n_deps, what, adjusted_for, unit) {
+  adj <- multi_adjust(models, n_deps = n_deps)
+  for (dep in names(adj)) {
+    s <- Filter(function(x) !is.null(x) && any(x$Parameter == cohort_term), adj[[dep]])
+    key <- paste0("cohort_", cohort_key(dep), "_sa8_vs_baseline")
+    if (!length(s)) {
+      add(key, "not fitted", paste0("Survey-cohort contrast (SA8 vs Baseline) for ", dep))
+      next
+    }
+    s <- s[[1]]
+    r <- s[s$Parameter == cohort_term, ]
+    effect <- if (dep == "Number of Side Effects") "RR" else "OR"
+    ci <- r[[grep("^Coeff_CI", colnames(r), value = TRUE)[1]]]
+    p <- r[[grep("^p", colnames(r), value = TRUE)[1]]]
+    conv <- attr(s, "converged")
+    add(key,
+      paste0(ci, ", p = ", fmt_p(p), if (!is.null(conv) && !isTRUE(conv)) " (convergence warning)" else ""),
+      paste0(effect, " [95% CI], Bonferroni-corrected p (x", n_deps, "), for SA8 vs Baseline on ", dep, " (", what,
+        "); adjusted for ", adjusted_for, ", N = ", commafy(attr(s, "n")[1]), " ", unit,
+        if (!is.null(attr(s, "n_id"))) paste0(" / ", commafy(attr(s, "n_id")), " participants") else ""))
+  }
+}
+
+if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_cohort")))) {
+  add_cohort_contrasts(glmm_models_cov_cohort, length(glmm_models_cov_cohort), "longitudinal",
+    "sex, start age, cumulative medication count and PHQ-9", "observations")
+  add_significance_changes("cohort_sensitivity_longitudinal", flat_p(glmm_models_cov), flat_p(glmm_models_cov_cohort),
+    "longitudinal")
+} else {
+  add("cohort_effects_longitudinal", skipped("`glmm_models_cov` and `glmm_models_cov_cohort` from src/02.regression.r"),
+    "Survey-cohort contrasts and significance changes for the four longitudinal outcomes")
+}
+
+legacy_cohort_needs <- c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete",
+  "sef_models_cohort", "eff_models_cohort")
+if (all(objects_present(legacy_cohort_needs))) {
+  n_legacy <- length(c(sef_models, eff_models))
+  add_cohort_contrasts(c(sef_models_cohort, eff_models_cohort), n_legacy, "per-participant",
+    "sex, average starting age and the number of psychiatric diagnosis types in the immediate family", "participants")
+  add_significance_changes("cohort_sensitivity_per_participant",
+    flat_p(c(sef_models_compete, eff_models_compete), n_deps = n_legacy),
+    flat_p(c(sef_models_cohort, eff_models_cohort), n_deps = n_legacy),
+    "per-participant")
+} else {
+  add("cohort_effects_per_participant",
+    skipped(paste0("`", paste(legacy_cohort_needs[!objects_present(legacy_cohort_needs)], collapse = "`, `"),
+      "` from src/02.regression.r")),
+    "Survey-cohort contrasts and significance changes for the four per-participant outcomes")
 }
 
 # ------------------------------------------------------------------------------
