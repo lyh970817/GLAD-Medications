@@ -244,8 +244,9 @@ med_long <- taken %>%
     #     engine codes -77 and an empty cell alike as -777.
     #   - Otherwise (the drug's cells are empty: page never reached or not
     #     recorded), missing.
-    # The "No side effects" tick does not enter the count. No sensitivity
-    # analysis.
+    # The "No side effects" tick does not enter the count. A strict coding of
+    # the blank checklists is a supplementary sensitivity analysis only
+    # (`n_se_strict` below).
     n_se_ticked = rowSums(across(all_of(se_items), is_tick)),
     n_se = case_when(
       n_se_ticked > 0 ~ n_se_ticked,
@@ -269,6 +270,18 @@ med_long <- taken %>%
       answered(stopped) ~ stopped,
       TRUE ~ NA_real_
     ),
+    # Strict blank-checklist sensitivity coding (ruling `a3_strict_sens`,
+    # 2026-11-11; supplementary only, the rule above stays primary as amended
+    # by the owner on 2026-11-06). A row with Yes on the any-side-effects
+    # question whose checklist page was displayed and recorded
+    # (`se_recorded` > 0) but has nothing ticked and no "No side effects" tick
+    # is not confirmed as 0 side effects: under the strict rule its number of
+    # side effects is missing, and so is its stop status (which follows n_se).
+    # Every other row keeps its main value. Used only by the strict
+    # sensitivity set (lib/13.strict_se.r, `glmm_models_cov_strict`).
+    se_blank_unconfirmed = !is.na(gate) & gate == 1 & se_recorded > 0 & n_se_ticked == 0 & !is_tick(nse),
+    n_se_strict = ifelse(se_blank_unconfirmed, NA_real_, n_se),
+    stopped_due_to_se_strict = ifelse(is.na(n_se_strict), NA_real_, stopped_due_to_se),
     # How well the drug worked: 0 not at all, 1 moderately, 2 very well.
     # "Don't know" is missing.
     effectiveness = answer_value(eff),
@@ -304,9 +317,22 @@ med_long <- taken %>%
     length_taken = answer_value(length)
   ) %>%
   select(
-    person_id, medication = drug, gate, n_se, stopped_due_to_se, effectiveness,
-    further_symptoms, improvement_duration, remission, start_age_raw, length_taken
+    person_id, medication = drug, gate, n_se, stopped_due_to_se, n_se_strict, stopped_due_to_se_strict,
+    effectiveness, further_symptoms, improvement_duration, remission, start_age_raw, length_taken
   )
+
+# The strict coding differs from the main one only on the unconfirmed blank
+# checklists, all of which are 0 under the main rule.
+local({
+  d <- !is.na(med_long$n_se) & is.na(med_long$n_se_strict)
+  stopifnot(
+    all(med_long$n_se[d] == 0), all(med_long$stopped_due_to_se[d] == 0),
+    identical(is.na(med_long$n_se) | d, is.na(med_long$n_se_strict)),
+    all(med_long$n_se_strict == med_long$n_se, na.rm = TRUE),
+    all(med_long$stopped_due_to_se_strict == med_long$stopped_due_to_se, na.rm = TRUE),
+    identical(is.na(med_long$stopped_due_to_se_strict), is.na(med_long$stopped_due_to_se) | d)
+  )
+})
 
 # Start age & cumulative medication count. Start age orders a participant's
 # medications. Ages outside 5-100 are invalid; a taken medication without a
@@ -552,7 +578,8 @@ static_dat <- in_scope %>%
 dat_long <- med_long %>%
   select(
     person_id, medication, start_age, cumulative_med_count,
-    effectiveness, n_se, remission, stopped_due_to_se
+    effectiveness, n_se, remission, stopped_due_to_se,
+    n_se_strict, stopped_due_to_se_strict
   ) %>%
   inner_join(static_dat, by = "person_id") %>%
   dplyr::mutate(

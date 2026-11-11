@@ -23,8 +23,9 @@
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
 # HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
 # supp_1a-2e, the drug-class tables supp_class_1a, 1c, 2a, 2d, and the
-# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy, and the
-# drug-adjusted within/between table supp_drug; file names predate
+# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy, the
+# drug-adjusted within/between table supp_drug and the strict blank-checklist
+# table supp_strict; file names predate
 # the renumbering, see above). Set
 # MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
@@ -49,6 +50,7 @@ family_needs <- list(
   class = c("glmm_models_cov", "glmm_models_cov_class"),
   cohort = c("glmm_models_cov", "glmm_models_cov_cohort"),
   drug = c("glmm_models_cov", "glmm_models_cov_drug"),
+  strict = c("glmm_models_cov", "glmm_models_cov_strict"),
   cohort_legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete",
     "sef_models_cohort", "eff_models_cohort")
 )
@@ -964,6 +966,108 @@ md <- c(
     "`results/glmm_medications_cov_drug.xlsx`. Supplementary Table S6 (numbering provisional)."
   ),
   drug_index
+)
+
+# ------------------------------------------------------------------------------
+# Supplementary Table S7 (file supp_strict): strict coding of blank checklists
+# ------------------------------------------------------------------------------
+# Sensitivity analysis (ruling `a3_strict_sens`, 2026-11-11): the eight adjusted
+# within/between models the coding of blank side-effect checklists can move,
+# from the main adjusted models and from the same models on the strict frame
+# (`glmm_models_cov_strict`; lib/13.strict_se.r). Under the main rule (A3 as
+# amended 2026-11-06) a Yes-gated checklist recorded with nothing ticked is 0
+# side effects; under the strict rule it is 0 only with the "No side effects"
+# tick, and otherwise the number of side effects and the stop status are
+# missing. The four outcomes are stacked with an italic heading row each, as in
+# S6. Bonferroni factor: the four longitudinal outcomes.
+strict_info <- attr(apply_strict_se(dat_long), "strict_se")
+strict_index <- character()
+strict_sid <- "S7"
+strict_title <- paste0(
+  "Within-person and between-person associations under a strict coding of blank side-effect checklists"
+)
+if (length(family_missing$strict)) {
+  strict_index <- c(strict_index, "", paste0("#### Supplementary Table ", strict_sid, ": ", strict_title),
+    skip_note("strict"))
+} else {
+  n_glmm <- length(glmm_models_cov)
+  strict_main <- multi_adjust(glmm_models_cov, n_deps = n_glmm)
+  strict_fam <- multi_adjust(glmm_models_cov_strict, n_deps = n_glmm)
+  strict_specs <- Filter(function(sp) sp$family == "glmm" && sp$outcome %in% names(glmm_models_cov_strict), TABLES)
+  blocks <- map(strict_specs, function(spec) {
+    tab <- build_supp_table(strict_main, strict_fam, spec$outcome)
+    if (is.null(tab)) {
+      message("!! no strict-rule rows for ", strict_sid, " (", spec$outcome, ")")
+      return(NULL)
+    }
+    # Only the associations the strict set estimates: the within/between terms.
+    strict_params <- clean_label(flatten_sets(strict_fam, spec$outcome)$Parameter)
+    failed <- attr(tab, "n_failed")
+    tab <- tab[tab$Parameter %in% strict_params, ]
+    heading <- tibble(
+      Parameter = paste0(spec$outcome, " (", spec$effect, ")"),
+      est_u = "", p_u = "", n_u = "", est_a = "", p_a = "", n_a = "", any_unconverged = FALSE
+    )
+    out <- bind_rows(heading, select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a, any_unconverged))
+    attr(out, "n_failed") <- c(unadjusted = 0, adjusted = failed[["adjusted"]])
+    attr(out, "italic") <- c(TRUE, rep(FALSE, nrow(tab)))
+    out
+  })
+  blocks <- Filter(Negate(is.null), blocks)
+  if (length(blocks)) {
+    tab <- bind_rows(blocks)
+    italic <- unlist(map(blocks, ~ attr(.x, "italic")))
+    failed <- Reduce(`+`, map(blocks, ~ attr(.x, "n_failed")))
+    foot <- paste0(
+      "Sensitivity analysis of the coding of blank side-effect checklists. Left: the main adjusted longitudinal ",
+      "models (adjusted for ", ADJUSTMENT_SETS[["glmm"]], "), in which a medication for which the participant ",
+      "reported side effects from some antidepressant, and whose side-effect checklist was displayed but left ",
+      "with nothing ticked, counts as 0 side effects and as not stopped because of side effects. Right: the same ",
+      "models under a strict rule, in which such a medication counts as 0 only when its \"No side effects\" box ",
+      "was ticked; otherwise its number of side effects and whether it was stopped because of side effects are ",
+      "missing (", strict_se_recoded_text(strict_info), " of ", commafy(strict_info$participants_recoded),
+      " participants; ", commafy(strict_info$participants_lose_all_n_se),
+      " participants are left with no known number of side effects). ",
+      "The within-person and between-person terms are recomputed from the strict values. ",
+      "Each row pair is one model with the predictor's within-person and between-person terms: effectiveness and ",
+      "remission on the number of side effects and on stopping because of side effects, and the number of side ",
+      "effects and stopping on cumulative medication count and on starting age (which are not adjusted for ",
+      "themselves). ",
+      "OR (RR for the number of side effects) with nominal 95% CI (for effectiveness, per step towards better ",
+      "effectiveness); p values are Bonferroni-corrected for the four longitudinal outcomes (x4). ",
+      "N is the complete-case sample of each model (medication observations / participants). ",
+      WITHIN_BETWEEN_NOTE,
+      if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
+      if (sum(failed)) {
+        paste0(" Not shown: ", failed[["adjusted"]], " strict-rule predictor set(s) that could not be fitted.")
+      } else {
+        ""
+      }
+    )
+    header <- c("Parameter", "Main rule OR [95% CI]", "p", "N", "Strict rule OR [95% CI]", "p", "N")
+    body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
+    file <- "supp_strict.html"
+    writeLines(html_table(header, body, foot, italic_rows = italic), file.path(out_dir, file))
+    strict_index <- c(
+      strict_index, "",
+      paste0("#### Supplementary Table ", strict_sid, ": ", strict_title),
+      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      md_table(header, body)
+    )
+    message("  wrote strict blank-checklist table ", strict_sid, " (", nrow(body), " rows)")
+  }
+}
+
+md <- c(
+  md, "", "## Sensitivity analysis: strict coding of blank side-effect checklists",
+  "",
+  paste0(
+    "`glmm_models_cov_strict`: the eight adjusted within/between models of effectiveness and remission on the ",
+    "side-effect measures and of the side-effect outcomes on cumulative medication count and start age, on the ",
+    "frame with unconfirmed blank checklists (", strict_se_recoded_text(strict_info), ") set to missing; workbook ",
+    "`results/glmm_medications_cov_strict.xlsx`. Supplementary Table S7 (numbering provisional)."
+  ),
+  strict_index
 )
 
 writeLines(md, md_path)

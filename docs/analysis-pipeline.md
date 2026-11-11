@@ -207,7 +207,7 @@ compared.
 | Unit of analysis | one row per participant × medication episode | one row per participant |
 | Random effects | participant random intercept, `(1 \| ID)` | none |
 | Fitting helper | `fit_glmm()` in `lib/02.fit_funs.r` | `fit_prop()` / `fit_hurdle()` |
-| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
+| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
 | Data frame | `dat_long_glmm` | `dat_nonlong_sef`, `dat_nonlong_eff` |
 
 Both live in `src/02.regression.r`; the legacy block starts under the comment
@@ -279,6 +279,7 @@ within a person. So the decomposed sets are:
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 | adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `start_age`, `cumulative_med_count` (all four outcomes, one extra set each, see below); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 | drug-identity sensitivity (`glmm_models_cov_drug`) | only these four sets, for effectiveness and remission only (see "Drug-identity sensitivity set") |
+| strict blank-checklist sensitivity (`glmm_models_cov_strict`) | `n_se`, `stopped_due_to_se` (effectiveness, remission); `cumulative_med_count`, `start_age` (`n_se`, `stopped_due_to_se`) only (see "Strict blank-checklist sensitivity set") |
 
 `start_age` and `cumulative_med_count` are also **adjustment covariates** in
 the adjusted sets. Since 2026-11-10 (user ruling) they play both roles there:
@@ -458,6 +459,45 @@ with the individual drug, equal to the between-person term.
   (`pp_within_n_se_plus1_{adjusted,drug_adjusted}_{very_well,not_at_all}_*`,
   see "Clinical quantities").
 
+### Strict blank-checklist sensitivity set (`glmm_models_cov_strict`)
+
+Since 2026-11-11 (ruling `a3_strict_sens` in `docs/sa8-migration-plan.md`,
+decided by the orchestrating session under the owner's "go with your
+decisions", owner to confirm). **The main rule is unchanged** (A3 as amended
+2026-11-06): with Yes on the any-side-effects question, a drug whose checklist
+was displayed and recorded with nothing ticked has `n_se` 0 and
+`stopped_due_to_se` 0, with or without the "No side effects" tick. The strict
+rule counts such a row as 0 only when its "No side effects" box is ticked;
+otherwise both are missing (the 2026-11-11 audit's categories "c mixed" and
+"c77 stored -77", `logs/adhoc-se-zero-2026-11-11/`).
+
+- **Columns:** the munge writes `n_se_strict` and `stopped_due_to_se_strict`
+  into `dat_long` beside the main columns (it stops if they differ from the
+  main ones anywhere but on those rows, all of which are 0 under the main
+  rule). On snapshot2: 3,273 rows (Baseline 2,428, SA8 845) of 1,675
+  participants; 62 participants have no known count left.
+- **Frame:** `apply_strict_se()` (`lib/13.strict_se.r`) puts the strict values
+  in `n_se` / `stopped_due_to_se`, drops the `_strict` columns and recomputes
+  the within/between terms, so the participant means are over the drugs with
+  a known strict value. Same rows as `dat_long_glmm`; the models' complete
+  cases shrink. The recode counts travel as attribute `strict_se` and are
+  printed in the `src/02` log.
+- **Scope:** the eight adjusted decomposed models the coding can move (as in
+  the ad hoc analysis, `logs/adhoc-strict-se-2026-11-11/`): effectiveness and
+  remission on `n_se` and on `stopped_due_to_se`; `n_se` and
+  `stopped_due_to_se` on `cumulative_med_count` and on `start_age`. Covariates
+  exactly as `glmm_models_cov`, with `covs_for_set()`. Bonferroni ×4 (passed
+  explicitly). Per-set cache in `cache/glmm_fits/` like the other GLMM sets.
+- Reported in `results/glmm_medications_cov_strict.xlsx` /
+  `_sig_cov_strict.xlsx`; in **Supplementary Table S7** (`supp_strict.html`,
+  the four outcomes stacked: main rule vs strict rule, corrected p, N; the
+  footnote states the rule and the recoded rows); and in
+  `docs/manuscript-numbers-current.md`, section "Strict blank-checklist
+  sensitivity analysis": the recode counts (`strict_blank_checklist_*`,
+  `strict_participants_no_known_n_se`, `strict_*_known_rows`), the estimates
+  `strict_<outcome>_<predictor>_<within|between>` and the significance changes
+  against `glmm_models_cov` (`strict_sensitivity_*`, 16 matched associations).
+
 **Significance changes** (`src/05.manuscript_numbers.r`,
 `add_significance_changes()`): for the cohort set (longitudinal and
 per-participant separately) and for the drug-class set
@@ -486,6 +526,7 @@ Everything below except `docs/` is **gitignored** and not in the repository.
 | `glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx` | GLMM adjusted, class-scoped frame with drug class (sensitivity) |
 | `glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | GLMM adjusted, survey cohort added (sensitivity) |
 | `glmm_medications_cov_drug.xlsx` / `_sig_cov_drug.xlsx` | GLMM within/between sets of effectiveness and remission, individual drug added (sensitivity) |
+| `glmm_medications_cov_strict.xlsx` / `_sig_cov_strict.xlsx` | GLMM within/between sets under the strict blank-checklist coding (sensitivity) |
 | `medications.xlsx` / `_sig.xlsx` | legacy unadjusted |
 | `medications_cov.xlsx` / `_sig_cov.xlsx` | legacy adjusted |
 | `medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | legacy adjusted, survey cohort added (sensitivity) |
@@ -536,8 +577,8 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
-| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_strict.html` (strict blank-checklist Supplementary Table S7) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
 | `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:

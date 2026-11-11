@@ -12,7 +12,7 @@ reload.project()
 # processes have room. This only clears the session; the cache files stay put.
 rm(list = intersect(
   c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
-    "glmm_models_cov_cohort", "glmm_models_cov_drug", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
+    "glmm_models_cov_cohort", "glmm_models_cov_drug", "glmm_models_cov_strict", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
   ls(globalenv())
 ), envir = globalenv())
 invisible(gc())
@@ -521,6 +521,44 @@ glmm_models_cov_drug <- fit_family(
   covs = c(compete_indeps, "phq9", DRUG_IDENTITY_COLUMN), data = dat_long_drug
 )
 
+# 7. Sensitivity: strict coding of blank side-effect checklists (ruling
+# `a3_strict_sens`, 2026-11-11; supplementary only). Under the main rule (A3 as
+# amended 2026-11-06, unchanged) a drug with Yes on the any-side-effects
+# question whose checklist page was recorded with nothing ticked has 0 side
+# effects and was not stopped because of them; under the strict rule such a row
+# counts as 0 only when its "No side effects" box is ticked, otherwise both are
+# missing (`n_se_strict`, `stopped_due_to_se_strict` from the munge;
+# lib/13.strict_se.r). Same rows as the main frame; the within/between terms
+# are recomputed from the strict values. The eight adjusted decomposed models
+# the strict rule can move: effectiveness and remission on the number of side
+# effects and on stopping because of side effects, and the number of side
+# effects and stopping on the cumulative medication count and on start age, each
+# adjusted exactly as in (2), including covs_for_set(). Bonferroni x4. The
+# per-set cache (cache/glmm_fits/) is the reuse gate, as for every GLMM set;
+# FORCE_REFIT=TRUE refits it.
+dat_long_strict <- apply_strict_se(dat_long_glmm, WITHIN_BETWEEN_VARS)
+strict_se_info <- attr(dat_long_strict, "strict_se")
+message(
+  "  Strict blank-checklist frame: ", strict_se_info$rows, " rows; ", strict_se_recoded_text(strict_se_info),
+  " of ", strict_se_info$participants_recoded, " participants recoded to missing; ",
+  strict_se_info$participants_lose_all_n_se, " participants left with no known number of side effects; ",
+  "known n_se ", strict_se_info$n_se_known_main, " -> ", strict_se_info$n_se_known_strict,
+  ", known stop status ", strict_se_info$stopped_known_main, " -> ", strict_se_info$stopped_known_strict
+)
+
+strict_focal_vars <- list(
+  effectiveness = c("n_se", "stopped_due_to_se"),
+  remission = c("n_se", "stopped_due_to_se"),
+  n_se = c("cumulative_med_count", "start_age"),
+  stopped_due_to_se = c("cumulative_med_count", "start_age")
+)
+
+glmm_models_cov_strict <- fit_family(
+  names(strict_focal_vars),
+  function(dep) decompose_indeps_list(as.list(strict_focal_vars[[dep]]), WITHIN_BETWEEN_VARS),
+  covs = c(compete_indeps, "phq9"), data = dat_long_strict
+)
+
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
 # a model that failed to converge cannot reach a table unnoticed the way the
 # adjusted Remission models did.
@@ -551,7 +589,8 @@ glmm_convergence <- c(
   report_convergence(glmm_models_cov_famhist, "sensitivity"),
   report_convergence(glmm_models_cov_class, "drug-class sensitivity"),
   report_convergence(glmm_models_cov_cohort, "cohort sensitivity"),
-  report_convergence(glmm_models_cov_drug, "drug-identity sensitivity")
+  report_convergence(glmm_models_cov_drug, "drug-identity sensitivity"),
+  report_convergence(glmm_models_cov_strict, "strict blank-checklist sensitivity")
 )
 
 # Save Results
@@ -562,6 +601,7 @@ cache("glmm_models_cov_famhist")
 cache("glmm_models_cov_class")
 cache("glmm_models_cov_cohort")
 cache("glmm_models_cov_drug")
+cache("glmm_models_cov_strict")
 
 write_xlsx_tab(bind_models(multi_adjust(glmm_models)),
   file = "./results/glmm_medications.xlsx", overwrite = TRUE
@@ -609,6 +649,15 @@ write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_drug, n_deps = length(gl
 )
 write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_drug, n_deps = length(glmm_deps)))),
   file = "./results/glmm_medications_sig_cov_drug.xlsx", overwrite = TRUE
+)
+
+# Sensitivity analysis: strict coding of blank side-effect checklists. All four
+# longitudinal outcomes, Bonferroni x4 (given explicitly, as for the drug set).
+write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_strict, n_deps = length(glmm_deps))),
+  file = "./results/glmm_medications_cov_strict.xlsx", overwrite = TRUE
+)
+write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_strict, n_deps = length(glmm_deps)))),
+  file = "./results/glmm_medications_sig_cov_strict.xlsx", overwrite = TRUE
 )
 
 # ------------------------------------------------------------------------------

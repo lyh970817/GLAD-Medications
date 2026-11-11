@@ -654,6 +654,92 @@ if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_drug")))) {
 }
 
 # ------------------------------------------------------------------------------
+section <- "Strict blank-checklist sensitivity analysis"
+# ------------------------------------------------------------------------------
+# `glmm_models_cov_strict` (ruling `a3_strict_sens`, 2026-11-11; the main rule,
+# A3 as amended 2026-11-06, is unchanged): a Yes-gated checklist recorded with
+# nothing ticked and no "No side effects" tick has a missing number of side
+# effects and stop status instead of 0 (lib/13.strict_se.r). Eight adjusted
+# within/between models, Bonferroni x4.
+strict_rec <- strict_se_recoded(dat_long)
+add_by_cohort("strict_blank_checklist_rows", dat_long, function(i) pct_of(sum(strict_rec[i]), length(i)),
+  paste0("Rows of `dat_long` with Yes on the any-side-effects question, the checklist displayed and recorded, ",
+    "nothing ticked and no \"No side effects\" tick: 0 side effects under the main rule, missing under the ",
+    "strict rule (of all rows)"))
+add_by_cohort("strict_blank_checklist_participants", dat_long,
+  function(i) commafy(n_distinct(dat_long$ID[i][strict_rec[i]])),
+  "Participants with at least one row recoded to missing by the strict rule")
+strict_info <- attr(apply_strict_se(dat_long), "strict_se")
+add("strict_participants_no_known_n_se", commafy(strict_info$participants_lose_all_n_se),
+  "Participants with a known number of side effects under the main rule and none under the strict rule")
+add("strict_n_se_known_rows", paste0(commafy(strict_info$n_se_known_main), " -> ", commafy(strict_info$n_se_known_strict)),
+  "Rows of `dat_long` with a known number of side effects, main rule -> strict rule")
+add("strict_stopped_known_rows", paste0(commafy(strict_info$stopped_known_main), " -> ",
+  commafy(strict_info$stopped_known_strict)),
+  "Rows of `dat_long` with a known stop status (stopped because of side effects), main rule -> strict rule")
+
+strict_wb_vars <- c(n_se = "number of side effects", stopped_due_to_se = "stopped because of side effects",
+  start_age = "start age", cumulative_med_count = "cumulative medication count")
+strict_focal <- list(
+  Effectiveness = c("n_se", "stopped_due_to_se"),
+  Remission = c("n_se", "stopped_due_to_se"),
+  "Number of Side Effects" = c("cumulative_med_count", "start_age"),
+  "Stopped due to Side Effects" = c("cumulative_med_count", "start_age")
+)
+if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_strict")))) {
+  n_glmm <- length(glmm_models_cov)
+  strict_adj <- multi_adjust(glmm_models_cov_strict, n_deps = n_glmm)
+  main_adj <- multi_adjust(glmm_models_cov, n_deps = n_glmm)
+  row_text <- function(st, label) {
+    r <- st[st$Parameter == label, ]
+    ci <- r[[grep("^Coeff_CI", colnames(r), value = TRUE)[1]]]
+    pv <- r[[grep("^p", colnames(r), value = TRUE)[1]]]
+    conv <- attr(st, "converged")
+    paste0(ci, ", p = ", fmt_p(pv), if (!is.null(conv) && !isTRUE(conv)) " (convergence warning)" else "")
+  }
+  for (dep in names(strict_adj)) {
+    for (v in strict_focal[[dep]]) {
+      term_labels <- within_between_labels(v, labels)
+      terms <- within_between_terms(v)
+      st <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), strict_adj[[dep]])
+      sm <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), main_adj[[dep]])
+      if (!length(st)) {
+        add(paste0("strict_", cohort_key(dep), "_", v), "not fitted",
+          paste0("Strict-rule within/between estimates of ", strict_wb_vars[[v]], " for ", dep))
+        next
+      }
+      st <- st[[1]]
+      own <- v %in% c("start_age", "cumulative_med_count")
+      others <- c("sex", unname(strict_wb_vars[setdiff(c("start_age", "cumulative_med_count"), v)]), "PHQ-9")
+      for (k in seq_along(terms)) {
+        main_txt <- if (length(sm)) {
+          paste0(row_text(sm[[1]], term_labels[[k]]), ", N = ", commafy(attr(sm[[1]], "n")[1]), " / ",
+            commafy(attr(sm[[1]], "n_id")))
+        } else {
+          "not fitted"
+        }
+        add(paste0("strict_", cohort_key(dep), "_", terms[[k]]),
+          row_text(st, term_labels[[k]]),
+          paste0(if (dep == "Number of Side Effects") "RR" else "OR",
+            " [95% CI], Bonferroni-corrected p (x", n_glmm, "), for ", term_labels[[k]], " on ", dep,
+            " under the strict blank-checklist rule; one model with both terms, adjusted for ",
+            paste(others, collapse = ", "),
+            if (own) paste0(" (not for ", strict_wb_vars[[v]], " itself)") else "",
+            ", N = ", commafy(attr(st, "n")[1]), " observations / ", commafy(attr(st, "n_id")),
+            " participants. Main rule: ", main_txt))
+      }
+    }
+  }
+  # The matched associations are the within/between terms of the strict set
+  # (16: four outcomes x two predictors x two terms).
+  add_significance_changes("strict_sensitivity", flat_p(glmm_models_cov),
+    flat_p(glmm_models_cov_strict, n_deps = n_glmm), "longitudinal")
+} else {
+  add("strict_within_between", skipped("`glmm_models_cov` and `glmm_models_cov_strict` from src/02.regression.r"),
+    "Strict blank-checklist within/between estimates and significance changes")
+}
+
+# ------------------------------------------------------------------------------
 # Write
 # ------------------------------------------------------------------------------
 numbers <- bind_rows(numbers)
