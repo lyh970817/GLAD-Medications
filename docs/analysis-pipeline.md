@@ -314,7 +314,7 @@ start age and the cumulative medication count that is
 `*_Demographics_Lifestyle`, now in the adjusted `glmm_*_cov_*` panels too, at
 the bottom of the panel), and `src/04.manuscript_tables.r` shows both rows in
 the supplementary tables (and whichever is significant in the Results tables),
-with a footnote; in Tables 2a, 2c, 3a and 3d and S2a, S2c, S3a, S3d the
+with a footnote; in Tables 3a, 3c, 4a and 4d and S2a, S2c, S3a, S3d the
 start-age and cumulative-count rows now carry an adjusted estimate, and in
 S4a–S4d and S5a–S5d they appear as rows. `src/05.manuscript_numbers.r`
 reports the main adjusted estimates as
@@ -577,9 +577,9 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_strict.html` (strict blank-checklist Supplementary Table S7) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample characteristics, overall), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 3a–3c and 4a–4e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_strict.html` (strict blank-checklist Supplementary Table S7) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
 | `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
-| `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
+| `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 2) and `table_predicted_probabilities.html` (Table 5); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
   the sample table is Table 1 (was 0), the side-effect tables 2a–2c (were
@@ -587,14 +587,32 @@ development extracts, can write to `logs/` instead of over the tracked files.
   tables S2a–S3e (were S1a–S2e). `src/04.manuscript_tables.r` writes the new
   numbers into the captions (`label` in `TABLES`); the HTML files keep their
   old names (`id`), so `table_1a.html` is Table 2a and `supp_2e.html` is
-  Supplementary Table S3e.
-- **Table 1** (`table_0.html`) describes `dat` by cohort and overall: sex, employment,
+  Supplementary Table S3e. **Renumbered again on 2026-11-11**: the
+  effectiveness-by-stopping cross-table moved forward from Table 4 to Table 2,
+  so the side-effect tables are 3a–3c (were 2a–2c) and the effectiveness
+  tables 4a–4e (were 3a–3e); Table 1, Table 5 and every supplementary table
+  kept their numbers. `label` in `TABLES` carries the main-text number and
+  `supp_label` the supplementary one (S2a–S3e), which no longer follows from
+  it; `table_1a.html` is now Table 3a, `table_2a.html` Table 4a, and
+  `supp_1a.html` still Supplementary Table S2a. `src/06` takes its own table
+  numbers (2 and 5, and 4a/4d for the cached tables it cites) from
+  `CLINICAL_TABLE_NUMBERS` in `lib/11.clinical_quantities.r`.
+- **No survey cohort in main-text tables** (ruling 2026-11-11). Table 1 and
+  Table 2 describe the sample overall, and no main-table caption or footnote
+  names the cohorts, the sign-up versions or the data source. The cohorts
+  appear only in the survey-cohort sensitivity tables S5a–S5e, whose note
+  labels them as the earlier (Baseline) and later (SA8) version of the GLAD
+  sign-up questionnaire. The S7 footnote gives the recoded rows as a total
+  (`strict_se_recoded_text(by_cohort = FALSE)`); the markdown index and the
+  logs keep the split. `src/06` still computes the by-cohort cross-table
+  counts and proportions, checks them, and writes them as number keys.
+- **Table 1** (`table_0.html`) describes `dat` overall (one column and a Missing column): sex, employment,
   relationship status, PHQ-9, GAD-7, AUDIT, BMI, comorbidity count, family
   history, number of antidepressants, as n (%) of known values or mean (SD),
   with a Missing column. Age is shown once the munge carries an `age` column
   (the pipeline's `dem.selfreport_age` is not exported yet); education is not
   in the extract.
-- **Supplementary Tables S2a–S3e** are the full output behind Tables 2a–3e, one
+- **Supplementary Tables S2a–S3e** are the full output behind Tables 3a–4e, one
   each, same outcome and model family: every parameter of every predictor set,
   significant or not, with the unadjusted and adjusted estimate (nominal 95%
   CI), Bonferroni-corrected p and complete-case N (observations / participants
@@ -645,9 +663,11 @@ into `src/05`'s file, because `src/05` also rewrites its file in full and works
 from the cached result tables alone. Like `src/04` and `src/05` it takes
 `MANUSCRIPT_OUT_DIR`. Helpers are in `lib/11.clinical_quantities.r`.
 
-- **Table 4**: effectiveness (not at all / moderately / very well / unknown)
-  by stopped because of side effects (not stopped / stopped / unknown), per
-  medication, overall and by cohort; cells n (row %). Unknown keeps every
+- **Table 2** (was Table 4 until 2026-11-11): effectiveness (not at all /
+  moderately / very well / unknown) by stopped because of side effects (not
+  stopped / stopped / unknown), per medication, for the sample overall (the
+  table and its footnote have no cohort blocks; the by-cohort counts and
+  proportions are number keys only); cells n (row %). Unknown keeps every
   missing value visible (effectiveness "don't know", unanswered or not shown;
   stop status unknown with the number of side effects, or the item unanswered).
   Two derived proportions, over medications with a known stop status: of those
@@ -674,7 +694,7 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
   rates), and **95% CIs are a parametric bootstrap of the fixed effects** (1,000
   multivariate normal draws from `vcov()`), with differences in percentage
   points from the same draws. The run stops if a contrast does not have the
-  sign of its cached odds ratio (Tables 3a/3d): for effectiveness, the top
+  sign of its cached odds ratio (Tables 4a/4d): for effectiveness, the top
   category moves with the log odds ratio and the bottom one against it.
 - **Where the fitted models come from.** `fit_glmm()` keeps no fitted model, but
   for the lme4 fits one survives: `parameters()` stores the call, whose
@@ -691,7 +711,7 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
   shared by both scripts, then `add_within_between()`), with `fit_glmm()`'s
   complete cases and no scaling (as for every clmm). The run stops unless the
   rebuilt rows and participants equal the cached set's N, and unless the
-  refitted odds ratios and CIs equal Table 3a's to two decimals. Each full
+  refitted odds ratios and CIs equal Table 4a's to two decimals. Each full
   `clmm` object is saved with its rows in `cache/clinical_fits/<key>.rds`, the
   key a hash of formula and data, and reused while both are unchanged. The
   three fits run on `CLINICAL_WORKERS` (default 3) PSOCK workers; fit times are
@@ -719,12 +739,12 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
 1. `FORCE_REFIT=TRUE Rscript src/02.regression.r > logs/regression_<date>.log 2>&1`
    (see "Traps"); check the convergence report at the end of the log.
 2. `Rscript src/04.manuscript_tables.r > logs/tables_<date>.log 2>&1`: Table 1,
-   Tables 2a–3e, S2a–S3e.
+   Tables 3a–4e, S2a–S7.
 3. `Rscript src/05.manuscript_numbers.r > logs/numbers_<date>.log 2>&1`: the
    text's numbers. Neither 2 nor 3 depends on the other.
 4. `Rscript src/06.clinical_quantities.r > logs/clinical_<date>.log 2>&1`, after
-   2 (it writes into the file 2 rewrites) and after 3 (it checks Table 4's
-   margins against 3's medication counts): Tables 4 and 5 and
+   2 (it writes into the file 2 rewrites) and after 3 (it checks Table 2's
+   margins against 3's medication counts): Tables 2 and 5 and
    `docs/manuscript-numbers-clinical.md`. A few minutes once
    `cache/clinical_fits/` holds the three effectiveness fits; after a refit
    that changes their data, the first run refits them (20-50 minutes each,
