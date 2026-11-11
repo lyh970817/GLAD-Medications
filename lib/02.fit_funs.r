@@ -213,6 +213,17 @@ fit_glmm <- function(dep, indeps, data, family = NULL) {
   attr(ms, "icc") <- re$icc
   # Overdispersion check for the Poisson fits; NA for the other families.
   attr(ms, "dispersion") <- if (engine == "poisson") pearson_dispersion(m) else NA_real_
+  # An ordinal fit keeps nothing else that can be predicted from (the clmm call
+  # carries no environment; see lib/11.clinical_quantities.r), so keep its
+  # thresholds, all fixed coefficients (covariates included) and their
+  # covariance. Small, and it changes no estimate. Fits cached before
+  # 2026-11-11 do not carry them.
+  if (engine == "clmm") {
+    attr(ms, "clmm_alpha") <- m$alpha
+    attr(ms, "clmm_beta") <- m$beta
+    th <- c(names(m$alpha), names(m$beta))
+    attr(ms, "clmm_vcov") <- as.matrix(stats::vcov(m))[th, th]
+  }
 
   return(ms)
 }

@@ -184,19 +184,53 @@ model_predictor <- function(frame, categories) {
     k <- length(m$alpha)
     X0 <- as.matrix(frame$data[names(m$beta)])
     V <- as.matrix(stats::vcov(m))[names(theta), names(theta)]
-    probs <- function(X, th) {
-      eta <- X %*% t(th[, -seq_len(k), drop = FALSE])
-      cum <- vapply(seq_len(k), function(j) colMeans(stats::plogis(sweep(-eta, 2, th[, j], "+"))), numeric(nrow(th)))
-      cum <- matrix(cum, nrow(th))
-      out <- cbind(cum, 1) - cbind(0, cum)
-      colnames(out) <- categories
-      out
-    }
+    probs <- clmm_probs(k, categories)
   } else {
     stop("No predictor for a ", class(m)[1], " fit")
   }
   stopifnot(nrow(X0) == nrow(frame$data))
   list(theta = theta, V = V, X0 = X0, probs = probs)
+}
+
+# P(category), averaged over the rows of X with the random intercept at 0, for
+# each parameter vector (row of `th`: k thresholds, then the coefficients):
+# P(Y <= j) = plogis(alpha_j - X beta).
+clmm_probs <- function(k, categories) {
+  function(X, th) {
+    eta <- X %*% t(th[, -seq_len(k), drop = FALSE])
+    cum <- vapply(seq_len(k), function(j) colMeans(stats::plogis(sweep(-eta, 2, th[, j], "+"))), numeric(nrow(th)))
+    cum <- matrix(cum, nrow(th))
+    out <- cbind(cum, 1) - cbind(0, cum)
+    colnames(out) <- categories
+    out
+  }
+}
+
+# The same predictor from a cached ordinal result of src/02.regression.r, for
+# fits made since 2026-11-11, which carry their thresholds, coefficients and
+# covariance (attributes `clmm_alpha`, `clmm_beta`, `clmm_vcov`, set by
+# fit_glmm()), so nothing needs refitting. `data` is the model's complete-case
+# rows (clmm_job()); a factor covariate (the drug identity) becomes its
+# indicator columns by the same treatment coding clmm used. Returns
+# list(frame, pred), `frame` as predict_scenarios() expects it (clmm
+# predictors are unscaled), or NULL when the set carries no thresholds.
+cached_clmm_predictor <- function(set, data, indeps, categories) {
+  alpha <- attr(set, "clmm_alpha")
+  beta <- attr(set, "clmm_beta")
+  V <- attr(set, "clmm_vcov")
+  if (is.null(alpha) || is.null(beta) || is.null(V)) {
+    return(NULL)
+  }
+  mm <- stats::model.matrix(stats::reformulate(indeps), data)
+  if (!all(names(beta) %in% colnames(mm))) {
+    stop("Design matrix lacks coefficient(s): ", paste(setdiff(names(beta), colnames(mm)), collapse = ", "))
+  }
+  theta <- c(alpha, beta)
+  list(
+    frame = list(data = data, scales = stats::setNames(rep(1, length(indeps)), indeps)),
+    pred = list(theta = theta, V = V[names(theta), names(theta)], X0 = mm[, names(beta), drop = FALSE],
+      probs = clmm_probs(length(alpha), categories))
+  )
 }
 
 # For each of `scenarios` (functions(data) returning a named list of unscaled

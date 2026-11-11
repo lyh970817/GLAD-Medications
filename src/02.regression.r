@@ -12,7 +12,7 @@ reload.project()
 # processes have room. This only clears the session; the cache files stay put.
 rm(list = intersect(
   c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
-    "glmm_models_cov_cohort", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
+    "glmm_models_cov_cohort", "glmm_models_cov_drug", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
   ls(globalenv())
 ), envir = globalenv())
 invisible(gc())
@@ -493,6 +493,34 @@ glmm_models_cov_cohort <- fit_family(
   covs = c(compete_indeps, "phq9", cohort_covariate), data = dat_long_glmm
 )
 
+# 6. Sensitivity: individual antidepressant (user approval 2026-11-11). The
+# within/between sets of the four medication-level predictors (number of side
+# effects, stopped because of side effects, start age, cumulative medication
+# count) for effectiveness and remission, adjusted exactly as in (2) --
+# including covs_for_set() for start age and the cumulative count -- plus the
+# individual drug as a factor (sertraline the reference; drugs with fewer than
+# 50 rows pooled as "other", lib/12.drug_identity.r). On the full frame, with no
+# row scoping, so the within/between terms are those of the main sets. Drug is
+# a covariate only and is never reported. Reason: drugs with more side effects
+# tend to be rated as working better, which confounds the within-person
+# contrast of the side-effect measures.
+dat_long_drug <- add_drug_identity(dat_long_glmm)
+drug_identity_info <- attr(dat_long_drug, "drug_identity")
+message(
+  "  Drug-identity frame: ", nrow(dat_long_drug), " rows, ", length(drug_identity_info$levels) - 1,
+  " drug contrasts vs ", drug_identity_info$reference, "; pooled as \"", DRUG_IDENTITY_OTHER, "\" (fewer than ",
+  drug_identity_info$min_rows, " rows): ", drug_identity_pooled_text(drug_identity_info$pooled)
+)
+
+drug_deps <- c("effectiveness", "remission")
+drug_focal_vars <- c("n_se", "stopped_due_to_se", "start_age", "cumulative_med_count")
+
+glmm_models_cov_drug <- fit_family(
+  drug_deps,
+  function(dep) decompose_indeps_list(as.list(drug_focal_vars), WITHIN_BETWEEN_VARS),
+  covs = c(compete_indeps, "phq9", DRUG_IDENTITY_COLUMN), data = dat_long_drug
+)
+
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
 # a model that failed to converge cannot reach a table unnoticed the way the
 # adjusted Remission models did.
@@ -522,7 +550,8 @@ glmm_convergence <- c(
   report_convergence(glmm_models_cov, "adjusted"),
   report_convergence(glmm_models_cov_famhist, "sensitivity"),
   report_convergence(glmm_models_cov_class, "drug-class sensitivity"),
-  report_convergence(glmm_models_cov_cohort, "cohort sensitivity")
+  report_convergence(glmm_models_cov_cohort, "cohort sensitivity"),
+  report_convergence(glmm_models_cov_drug, "drug-identity sensitivity")
 )
 
 # Save Results
@@ -532,6 +561,7 @@ cache("glmm_models_cov")
 cache("glmm_models_cov_famhist")
 cache("glmm_models_cov_class")
 cache("glmm_models_cov_cohort")
+cache("glmm_models_cov_drug")
 
 write_xlsx_tab(bind_models(multi_adjust(glmm_models)),
   file = "./results/glmm_medications.xlsx", overwrite = TRUE
@@ -569,6 +599,16 @@ write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_cohort)),
 )
 write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_cohort))),
   file = "./results/glmm_medications_sig_cov_cohort.xlsx", overwrite = TRUE
+)
+
+# Sensitivity analysis: the within/between sets with the individual drug added.
+# Two of the four longitudinal outcomes, so the Bonferroni factor is given
+# explicitly: four, as for every other longitudinal workbook.
+write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_drug, n_deps = length(glmm_deps))),
+  file = "./results/glmm_medications_cov_drug.xlsx", overwrite = TRUE
+)
+write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_drug, n_deps = length(glmm_deps)))),
+  file = "./results/glmm_medications_sig_cov_drug.xlsx", overwrite = TRUE
 )
 
 # ------------------------------------------------------------------------------

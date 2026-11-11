@@ -207,7 +207,7 @@ compared.
 | Unit of analysis | one row per participant × medication episode | one row per participant |
 | Random effects | participant random intercept, `(1 \| ID)` | none |
 | Fitting helper | `fit_glmm()` in `lib/02.fit_funs.r` | `fit_prop()` / `fit_hurdle()` |
-| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
+| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
 | Data frame | `dat_long_glmm` | `dat_nonlong_sef`, `dat_nonlong_eff` |
 
 Both live in `src/02.regression.r`; the legacy block starts under the comment
@@ -278,6 +278,7 @@ within a person. So the decomposed sets are:
 |---|---|
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 | adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `start_age`, `cumulative_med_count` (all four outcomes, one extra set each, see below); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
+| drug-identity sensitivity (`glmm_models_cov_drug`) | only these four sets, for effectiveness and remission only (see "Drug-identity sensitivity set") |
 
 `start_age` and `cumulative_med_count` are also **adjustment covariates** in
 the adjusted sets. Since 2026-11-10 (user ruling) they play both roles there:
@@ -405,12 +406,65 @@ the covariates. Cohort is **not** in the main sets.
   (`cohort_<outcome>_sa8_vs_baseline`) and the significance changes against the
   main adjusted set.
 
+### Drug-identity sensitivity set (`glmm_models_cov_drug`)
+
+Since 2026-11-11 (user approval; it reports in the main Results). **Why:** the
+within-person contrast of the side-effect measures is confounded by the drug.
+Drugs with more side effects also tend to be rated as working better, so a
+person's medication with more side effects than their own average is also,
+on average, a drug that tends to work better, and that masks the
+within-person association. An ad hoc check on 2026-11-10
+(`logs/adhoc-class-within-2026-11-10/`) found the adjusted within-person odds
+ratio of the number of side effects on effectiveness at 0.99 [0.98, 1.00]
+(corrected p 0.162), 0.97 with drug-class adjustment and 0.96 [0.95, 0.97]
+with the individual drug, equal to the between-person term.
+
+- **Scope:** outcomes effectiveness and remission only, and only the focal
+  sets of the four decomposed medication-level predictors (`n_se`,
+  `stopped_due_to_se`, `start_age`, `cumulative_med_count`), each as its
+  within and between terms in one model: 2 x 4 = 8 models.
+- **Adjustment:** exactly as `glmm_models_cov` (sex, start age, cumulative
+  medication count, PHQ-9, with `covs_for_set()` dropping start age or the
+  cumulative count from its own set) plus `drug_identity`.
+- **Frame:** the **full** `dat_long_glmm`, no row scoping, so the
+  within/between terms and their means are those of the main sets (each
+  model's N equals its main counterpart's).
+- **Drug identity** (`lib/12.drug_identity.r`, `add_drug_identity()`): one
+  factor, **sertraline the reference** (the most common drug); a drug with
+  **fewer than 50 rows of the frame is pooled into "other"**. The pooled list
+  is derived from the data and printed in the `src/02` log; on the full cohort
+  it is doxepin (46), phenelzine (46), trimipramine (39), tranylcypromine
+  (26), mianserin (17), isocarboxazid (4), dapoxetine (2), so 21 drug
+  contrasts. Drug identity is a covariate only: it is never a focal set and
+  its contrasts are never reported (`drop_covariate_terms()` drops the
+  `drug_identity*` terms by prefix).
+- **Bonferroni factor ×4** (the four longitudinal outcomes), passed
+  explicitly everywhere (`multi_adjust(..., n_deps = 4)`), because the set has
+  only two outcomes and the default would correct by two.
+- Per-set cache in `cache/glmm_fits/`, like the others. The four ordinal fits
+  have 27 fixed effects and take about 2.5 h each (in parallel); being fitted
+  after 2026-11-11 they carry their thresholds and covariance (see "Clinical
+  quantities").
+- Reported in `results/glmm_medications_cov_drug.xlsx` /
+  `_sig_cov_drug.xlsx` (one tab per outcome); in **Supplementary Table S6**
+  (`supp_drug.html`, the two outcomes stacked as in S5e: main adjusted vs
+  drug-adjusted estimate, corrected p, N); in
+  `docs/manuscript-numbers-current.md`, section "Drug-adjusted within/between
+  sensitivity analysis": `drug_<outcome>_<predictor>_<within|between>`, the
+  pooled drugs (`drug_identity_pooled_drugs`) and the significance changes
+  against `glmm_models_cov` (`drug_sensitivity_*`, over the 16 matched
+  within/between associations); and in `docs/manuscript-numbers-clinical.md`,
+  the predicted change for one side effect above the person's own mean
+  (`pp_within_n_se_plus1_{adjusted,drug_adjusted}_{very_well,not_at_all}_*`,
+  see "Clinical quantities").
+
 **Significance changes** (`src/05.manuscript_numbers.r`,
 `add_significance_changes()`): for the cohort set (longitudinal and
 per-participant separately) and for the drug-class set
 (`class_sensitivity_*`), the associations matched by outcome and parameter
 label whose Bonferroni-corrected significance (p ≤ 0.05) differs from the main
-adjusted set, counted as lost, gained and total, with the associations named.
+adjusted set, counted as lost, gained and total, with the associations named
+(and, since 2026-11-11, for the drug-identity set, `drug_sensitivity_*`).
 They are computed on the **unrounded** p values in the cached models; a count
 read off the tables, which round p to three decimals, can misplace a p near
 0.05. A parameter estimated in only one set (the class or cohort contrasts) is
@@ -431,6 +485,7 @@ Everything below except `docs/` is **gitignored** and not in the repository.
 | `glmm_medications_cov_famhist.xlsx` / `_sig_cov_famhist.xlsx` | GLMM adjusted, family history added (sensitivity) |
 | `glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx` | GLMM adjusted, class-scoped frame with drug class (sensitivity) |
 | `glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | GLMM adjusted, survey cohort added (sensitivity) |
+| `glmm_medications_cov_drug.xlsx` / `_sig_cov_drug.xlsx` | GLMM within/between sets of effectiveness and remission, individual drug added (sensitivity) |
 | `medications.xlsx` / `_sig.xlsx` | legacy unadjusted |
 | `medications_cov.xlsx` / `_sig_cov.xlsx` | legacy adjusted |
 | `medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | legacy adjusted, survey cohort added (sensitivity) |
@@ -481,9 +536,9 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
-| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
-| `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample by cohort), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 2a–2c and 3a–3e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
+| `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 4, provisional) and `table_predicted_probabilities.html` (Table 5, provisional); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
   the sample table is Table 1 (was 0), the side-effect tables 2a–2c (were
@@ -600,6 +655,23 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
   key a hash of formula and data, and reused while both are unchanged. The
   three fits run on `CLINICAL_WORKERS` (default 3) PSOCK workers; fit times are
   in `docs/manuscript-numbers-clinical.md` (`clinical_fit_minutes_*`).
+- **One side effect above the person's own mean** (since 2026-11-11; number
+  keys only, no table rows): from the adjusted effectiveness ~ number of side
+  effects model, the change in P(very well) and P(not at all) when
+  `n_se_within` goes from 0 to +1, `n_se_between` and the covariates observed,
+  random intercept 0, averaged over the model's rows, with a 1,000-draw
+  parametric bootstrap CI; for the main adjusted model (the refit above) and
+  for the drug-adjusted one from `glmm_models_cov_drug`, which is **not
+  refitted**: since 2026-11-11 `fit_glmm()` keeps an ordinal fit's thresholds,
+  coefficients (covariates included) and their covariance on the result
+  (attributes `clmm_alpha`, `clmm_beta`, `clmm_vcov`, carried through
+  `format_model()`), and `cached_clmm_predictor()` predicts from them on the
+  set's complete-case rows rebuilt by `clmm_job()` (N checked against the
+  cached set; the drug factor expanded by `model.matrix()`). Ordinal sets
+  cached before that date carry no such attributes, which is why the three
+  Table 5 models are still refitted.
+  Keys `pp_within_n_se_plus1_{adjusted,drug_adjusted}_{very_well,not_at_all}_{at_0,at_plus1,difference}`.
+  This block draws after Table 5 under its own seed, so Table 5 is unchanged.
 
 ### Order of work after a refit
 

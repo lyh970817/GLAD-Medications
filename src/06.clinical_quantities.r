@@ -32,6 +32,13 @@
 #     definition, in a sidecar beside src/05's manuscript-numbers-current.md
 #     (which src/05 rewrites in full and which only reads cached tables).
 #
+# C. Number keys only (no table): the predicted change in P(effectiveness =
+#    very well) and P(not at all) for one side effect above the person's own
+#    mean, from the adjusted number-of-side-effects model without and with the
+#    individual antidepressant (`glmm_models_cov_drug`); the drug-adjusted
+#    model is predicted from src/02's cached fit, which keeps its thresholds
+#    and covariance, so it is not refitted.
+#
 # Checks (the run stops if one fails): the cross-table margins equal the rows
 # of `dat_long` by cohort and the medication counts in
 # manuscript-numbers-current.md; every predicted contrast has the sign of its
@@ -491,6 +498,94 @@ pp_foot <- paste0(
 writeLines(html_table(pp_header, pp_body, pp_foot, italic_rows = pp_italic),
   file.path(out_dir, "table_predicted_probabilities.html"))
 message("  wrote Table 5 (table_predicted_probabilities.html, ", nrow(pp_body), " rows)")
+
+# ==============================================================================
+# C. One side effect above the person's own mean (number keys only, not Table 5)
+# ==============================================================================
+# From the adjusted effectiveness ~ number of side effects (within/between)
+# model, without and with adjustment for the individual antidepressant
+# (`glmm_models_cov_drug`, lib/12.drug_identity.r; user approval 2026-11-11):
+# the predicted change in P(effectiveness = very well) and P(not at all) when
+# the within-person term goes from 0 to +1 (one side effect more than the
+# person's own mean), the between-person term and the covariates at their
+# observed values, random intercept 0, averaged over the model's rows; CIs from
+# the same kind of parametric bootstrap as Table 5. The main model is the refit
+# above. The drug-adjusted one is not refitted: src/02 fitted it after
+# fit_glmm() began keeping an ordinal fit's thresholds, coefficients and
+# covariance on the result, so it is predicted from the cached set, on its
+# complete-case rows rebuilt here (N checked against the cached set). Its own
+# seed, set after Table 5, so Table 5's draws are unchanged.
+set.seed(20261111)
+WITHIN_SECTION <- "One side effect above the person's mean (number of side effects, within person)"
+WITHIN_CATS <- c(very_well = "Very well", not_at_all = "Not at all")
+eff_cats <- CATEGORIES[["Effectiveness"]]
+within_models <- list(adjusted = list(
+  frame = eff_frames$n_se$frame, pred = model_predictor(eff_frames$n_se$frame, eff_cats), set = eff_sets$n_se,
+  what = "adjusted for sex, start age, cumulative medication count and PHQ-9"
+))
+
+if (all(objects_present("glmm_models_cov_drug"))) {
+  st_drug <- find_set_by_terms(glmm_models_cov_drug[["Effectiveness"]], SE_SETS$n_se)
+  if (is.null(st_drug)) stop("No number-of-side-effects set in glmm_models_cov_drug$Effectiveness")
+  drug_job <- clmm_job(attr(st_drug, "model_formula"), add_drug_identity(dat_long_glmm))
+  if (nrow(drug_job$data) != attr(st_drug, "n")[1] || n_distinct(drug_job$data$ID) != attr(st_drug, "n_id")) {
+    stop("Rebuilt drug-adjusted effectiveness frame has ", nrow(drug_job$data), " rows / ", n_distinct(drug_job$data$ID),
+      " participants; the cached model has ", attr(st_drug, "n")[1], " / ", attr(st_drug, "n_id"))
+  }
+  cp <- cached_clmm_predictor(st_drug, drug_job$data, drug_job$indeps, eff_cats)
+  if (is.null(cp)) {
+    stop("The cached drug-adjusted effectiveness / n_se set carries no thresholds or covariance; refit it with src/02")
+  }
+  # The stored coefficients are the ones the cached table reports.
+  or_cached <- st_drug$Coefficient[match(unname(term_labels[SE_SETS$n_se]), st_drug$Parameter)]
+  if (!isTRUE(all.equal(unname(exp(cp$pred$theta[SE_SETS$n_se])), or_cached, tolerance = 1e-8))) {
+    stop("Stored clmm coefficients of the drug-adjusted set do not match its reported odds ratios")
+  }
+  message("  effectiveness / n_se, drug-adjusted: ", drug_job$formula, " on ", commafy(nrow(drug_job$data)),
+    " rows (= cached N), predicted from the cached fit (", length(cp$pred$theta), " parameters)")
+  within_models$drug_adjusted <- list(
+    frame = cp$frame, pred = cp$pred, set = st_drug,
+    what = "adjusted for sex, start age, cumulative medication count, PHQ-9 and the individual antidepressant"
+  )
+} else {
+  message("!! drug-adjusted within-person contrast skipped: needs glmm_models_cov_drug in cache/")
+  add(WITHIN_SECTION, "pp_within_n_se_plus1_drug_adjusted", "skipped: needs `glmm_models_cov_drug` from src/02.regression.r",
+    "Predicted change for one side effect above the person's mean, drug-adjusted model")
+}
+
+for (mod in names(within_models)) {
+  wm <- within_models[[mod]]
+  pred <- wm$pred
+  fns <- list(function(d) list(n_se_within = 0), function(d) list(n_se_within = 1))
+  draws <- draw_mvn(pred$theta, pred$V, N_PARAM_BOOT)
+  pr <- predict_scenarios(wm$frame, pred, fns, draws)
+  beta <- pred$theta[["n_se_within"]]
+  d_est <- pr[[2]]$est - pr[[1]]$est
+  if (!(sign(d_est[["Very well"]]) == sign(beta) && sign(d_est[["Not at all"]]) == -sign(beta))) {
+    stop("Within-person +1 contrast (", mod, ") does not follow the sign of its coefficient")
+  }
+  n_long <- paste0(commafy(attr(wm$set, "n")[1]), " observations from ", commafy(attr(wm$set, "n_id")), " participants")
+  message("  ", mod, ": one side effect above the person's mean: ",
+    paste0(eff_cats, " ", formatC(100 * d_est, format = "f", digits = 2), " pp", collapse = ", "))
+  for (ck in names(WITHIN_CATS)) {
+    cc <- WITHIN_CATS[[ck]]
+    key <- paste0("pp_within_n_se_plus1_", mod, "_", ck)
+    add(WITHIN_SECTION, paste0(key, "_at_0"), sub("^(\\S+) ", "\\1% ", ci_text(pr[[1]]$est[[cc]], pr[[1]]$boot[, cc])),
+      paste0("Predicted probability (%, 95% CI) of effectiveness \"", tolower(cc), "\", number of side effects at the ",
+        "person's own mean (within-person term 0), ", wm$what, " (", n_long, "); between-person term and covariates ",
+        "observed, random intercept 0, averaged over the model's rows; parametric bootstrap CI (",
+        commafy(N_PARAM_BOOT), " draws)"))
+    add(WITHIN_SECTION, paste0(key, "_at_plus1"), sub("^(\\S+) ", "\\1% ", ci_text(pr[[2]]$est[[cc]], pr[[2]]$boot[, cc])),
+      paste0("As `", key, "_at_0`, with one side effect more than the person's own mean (within-person term +1)"))
+    add(WITHIN_SECTION, paste0(key, "_difference"),
+      sub("^(\\S+) ", "\\1 pp ", ci_text(pr[[2]]$est[[cc]] - pr[[1]]$est[[cc]], pr[[2]]$boot[, cc] - pr[[1]]$boot[, cc], digits = 2)),
+      paste0("Change in the predicted probability of effectiveness \"", tolower(cc), "\" (percentage points, 95% CI) for ",
+        "one side effect above the person's own mean (within-person term +1 vs 0), ", wm$what,
+        "; same draws as `", key, "_at_0`"))
+  }
+  rm(draws, pr)
+  invisible(gc())
+}
 
 # ==============================================================================
 # Markdown: the block in manuscript-tables-current.md, and the numbers sidecar

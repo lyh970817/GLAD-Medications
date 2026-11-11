@@ -23,7 +23,8 @@
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
 # HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
 # supp_1a-2e, the drug-class tables supp_class_1a, 1c, 2a, 2d, and the
-# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy; file names predate
+# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy, and the
+# drug-adjusted within/between table supp_drug; file names predate
 # the renumbering, see above). Set
 # MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
@@ -47,6 +48,7 @@ family_needs <- list(
   legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete"),
   class = c("glmm_models_cov", "glmm_models_cov_class"),
   cohort = c("glmm_models_cov", "glmm_models_cov_cohort"),
+  drug = c("glmm_models_cov", "glmm_models_cov_drug"),
   cohort_legacy = c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete",
     "sef_models_cohort", "eff_models_cohort")
 )
@@ -861,6 +863,107 @@ md <- c(
     "Tables S5a-S5e (numbering provisional)."
   ),
   cohort_index
+)
+
+# ------------------------------------------------------------------------------
+# Supplementary Table S6 (file supp_drug): within/between, adjusted for the drug
+# ------------------------------------------------------------------------------
+# Sensitivity analysis (user approval 2026-11-11): the within- and
+# between-person terms of the four medication-level predictors for
+# effectiveness and remission, from the main adjusted models and from the same
+# models with the individual antidepressant added to the covariates
+# (`glmm_models_cov_drug`, full frame, sertraline the reference, drugs with
+# fewer than 50 rows pooled; lib/12.drug_identity.r). Drugs that cause more
+# side effects tend to be rated as working better, which confounds the
+# within-person contrast; adjusting for the drug removes it. The two outcomes
+# are stacked with an italic heading row each, as in S5e. Bonferroni factor:
+# the four longitudinal outcomes, although this set has two.
+drug_info <- attr(add_drug_identity(dat_long), "drug_identity")
+drug_index <- character()
+drug_sid <- "S6"
+drug_title <- paste0(
+  "Within-person and between-person associations with effectiveness and remission, adjusted and ",
+  "additionally adjusted for the individual antidepressant"
+)
+if (length(family_missing$drug)) {
+  drug_index <- c(drug_index, "", paste0("#### Supplementary Table ", drug_sid, ": ", drug_title), skip_note("drug"))
+} else {
+  n_glmm <- length(glmm_models_cov)
+  drug_main <- multi_adjust(glmm_models_cov, n_deps = n_glmm)
+  drug_fam <- multi_adjust(glmm_models_cov_drug, n_deps = n_glmm)
+  drug_specs <- Filter(function(sp) sp$family == "glmm" && sp$outcome %in% names(glmm_models_cov_drug), TABLES)
+  blocks <- map(drug_specs, function(spec) {
+    tab <- build_supp_table(drug_main, drug_fam, spec$outcome)
+    if (is.null(tab)) {
+      message("!! no drug-adjusted rows for ", drug_sid, " (", spec$outcome, ")")
+      return(NULL)
+    }
+    # Only the associations the drug set estimates: the within/between terms.
+    drug_params <- clean_label(flatten_sets(drug_fam, spec$outcome)$Parameter)
+    failed <- attr(tab, "n_failed")
+    tab <- tab[tab$Parameter %in% drug_params, ]
+    heading <- tibble(
+      Parameter = paste0(spec$outcome, " (", spec$effect, ")"),
+      est_u = "", p_u = "", n_u = "", est_a = "", p_a = "", n_a = "", any_unconverged = FALSE
+    )
+    out <- bind_rows(heading, select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a, any_unconverged))
+    attr(out, "n_failed") <- c(unadjusted = 0, adjusted = failed[["adjusted"]])
+    attr(out, "italic") <- c(TRUE, rep(FALSE, nrow(tab)))
+    out
+  })
+  blocks <- Filter(Negate(is.null), blocks)
+  if (length(blocks)) {
+    tab <- bind_rows(blocks)
+    italic <- unlist(map(blocks, ~ attr(.x, "italic")))
+    failed <- Reduce(`+`, map(blocks, ~ attr(.x, "n_failed")))
+    pooled <- drug_info$pooled
+    foot <- paste0(
+      "Sensitivity analysis by individual antidepressant. Left: the main adjusted longitudinal models (adjusted for ",
+      ADJUSTMENT_SETS[["glmm"]], "). Right: the same models, on the same frame, with the individual antidepressant ",
+      "added to the covariates as fixed effects (one indicator per drug, ", drug_info$reference, " the reference; the ",
+      length(pooled), " drugs with fewer than ", drug_info$min_rows, " medication observations, ",
+      paste0(names(pooled), " (", commafy(as.integer(pooled)), ")", collapse = ", "),
+      ", pooled into one further category). The drug contrasts are adjustment terms and are not reported. ",
+      "Drugs with more side effects tend to be rated as working better, so without this adjustment the ",
+      "within-person terms partly compare drugs rather than the same person's medications. ",
+      "Each predictor (number of side effects, stopping because of side effects, starting age, cumulative ",
+      "medication count) is its own model with its within-person and between-person terms; starting age and ",
+      "cumulative medication count are not adjusted for themselves. ",
+      "OR with nominal 95% CI (for effectiveness, per step towards better effectiveness); p values are ",
+      "Bonferroni-corrected for the four longitudinal outcomes (x4). ",
+      "N is the complete-case sample of each model (medication observations / participants). ",
+      WITHIN_BETWEEN_NOTE,
+      if (any(tab$any_unconverged)) " †: the model reported a convergence warning." else "",
+      if (sum(failed)) {
+        paste0(" Not shown: ", failed[["adjusted"]], " drug-adjusted predictor set(s) that could not be fitted.")
+      } else {
+        ""
+      }
+    )
+    header <- c("Parameter", "Adjusted OR [95% CI]", "p", "N", "Adjusted + antidepressant OR [95% CI]", "p", "N")
+    body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
+    file <- "supp_drug.html"
+    writeLines(html_table(header, body, foot, italic_rows = italic), file.path(out_dir, file))
+    drug_index <- c(
+      drug_index, "",
+      paste0("#### Supplementary Table ", drug_sid, ": ", drug_title),
+      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      md_table(header, body)
+    )
+    message("  wrote drug-adjusted table ", drug_sid, " (", nrow(body), " rows)")
+  }
+}
+
+md <- c(
+  md, "", "## Sensitivity analysis: individual antidepressant",
+  "",
+  paste0(
+    "`glmm_models_cov_drug`: the within/between sets of the four medication-level predictors for effectiveness ",
+    "and remission, adjusted as the main models plus the individual antidepressant (",
+    drug_info$reference, " reference, drugs with fewer than ", drug_info$min_rows, " rows pooled); workbook ",
+    "`results/glmm_medications_cov_drug.xlsx`. Supplementary Table S6 (numbering provisional)."
+  ),
+  drug_index
 )
 
 writeLines(md, md_path)

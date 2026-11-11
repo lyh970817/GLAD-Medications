@@ -582,6 +582,72 @@ if (all(objects_present(legacy_cohort_needs))) {
 }
 
 # ------------------------------------------------------------------------------
+section <- "Drug-adjusted within/between sensitivity analysis"
+# ------------------------------------------------------------------------------
+# `glmm_models_cov_drug` (user approval 2026-11-11): the within/between sets of
+# the four medication-level predictors for effectiveness and remission,
+# adjusted as in `glmm_models_cov` plus the individual antidepressant
+# (lib/12.drug_identity.r). Bonferroni factor: the four longitudinal outcomes,
+# although the set has two.
+drug_info <- attr(add_drug_identity(dat_long), "drug_identity")
+add("drug_identity_reference", drug_info$reference, "Reference drug of the drug-identity covariate")
+add("drug_identity_contrasts", commafy(length(drug_info$levels) - 1),
+  "Drug-identity fixed effects (drugs other than the reference, plus the pooled category)")
+add("drug_identity_pooled_drugs", drug_identity_pooled_text(drug_info$pooled),
+  paste0("Drugs with fewer than ", drug_info$min_rows, " rows of `dat_long` (rows in brackets), pooled into one ",
+    "category of the drug-identity covariate"))
+add("drug_identity_pooled_rows", commafy(sum(drug_info$pooled)),
+  paste0("Rows of `dat_long` in the pooled drug category (", length(drug_info$pooled), " drugs)"))
+
+drug_wb_vars <- c(n_se = "number of side effects", stopped_due_to_se = "stopped because of side effects",
+  start_age = "start age", cumulative_med_count = "cumulative medication count")
+if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_drug")))) {
+  n_glmm <- length(glmm_models_cov)
+  drug_adj <- multi_adjust(glmm_models_cov_drug, n_deps = n_glmm)
+  main_adj <- multi_adjust(glmm_models_cov, n_deps = n_glmm)
+  row_text <- function(st, label) {
+    r <- st[st$Parameter == label, ]
+    ci <- r[[grep("^Coeff_CI", colnames(r), value = TRUE)[1]]]
+    pv <- r[[grep("^p", colnames(r), value = TRUE)[1]]]
+    conv <- attr(st, "converged")
+    paste0(ci, ", p = ", fmt_p(pv), if (!is.null(conv) && !isTRUE(conv)) " (convergence warning)" else "")
+  }
+  for (dep in names(drug_adj)) {
+    for (v in names(drug_wb_vars)) {
+      term_labels <- within_between_labels(v, labels)
+      terms <- within_between_terms(v)
+      st <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), drug_adj[[dep]])
+      sm <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), main_adj[[dep]])
+      if (!length(st)) {
+        add(paste0("drug_", cohort_key(dep), "_", v), "not fitted",
+          paste0("Drug-adjusted within/between estimates of ", drug_wb_vars[[v]], " for ", dep))
+        next
+      }
+      st <- st[[1]]
+      own <- v %in% c("start_age", "cumulative_med_count")
+      others <- c("sex", unname(drug_wb_vars[setdiff(c("start_age", "cumulative_med_count"), v)]), "PHQ-9")
+      for (k in seq_along(terms)) {
+        main_txt <- if (length(sm)) row_text(sm[[1]], term_labels[[k]]) else "not fitted"
+        add(paste0("drug_", cohort_key(dep), "_", terms[[k]]),
+          row_text(st, term_labels[[k]]),
+          paste0("OR [95% CI], Bonferroni-corrected p (x", n_glmm, "), for ", term_labels[[k]], " on ", dep,
+            "; one model with both terms, adjusted for ", paste(others, collapse = ", "),
+            if (own) paste0(" (not for ", drug_wb_vars[[v]], " itself)") else "",
+            " and the individual antidepressant, N = ", commafy(attr(st, "n")[1]), " observations / ",
+            commafy(attr(st, "n_id")), " participants. Main adjusted model (no drug): ", main_txt))
+      }
+    }
+  }
+  # The matched associations are the within/between terms of the drug set
+  # (16: two outcomes x four predictors x two terms).
+  add_significance_changes("drug_sensitivity", flat_p(glmm_models_cov), flat_p(glmm_models_cov_drug, n_deps = n_glmm),
+    "longitudinal")
+} else {
+  add("drug_within_between", skipped("`glmm_models_cov` and `glmm_models_cov_drug` from src/02.regression.r"),
+    "Drug-adjusted within/between estimates and significance changes for effectiveness and remission")
+}
+
+# ------------------------------------------------------------------------------
 # Write
 # ------------------------------------------------------------------------------
 numbers <- bind_rows(numbers)
