@@ -9,10 +9,19 @@
 #
 # Numbering: the manuscript renumbered its tables on 2026-11-09 (sample table
 # 0 -> 1, side-effect tables 1a-1c -> 2a-2c, effectiveness tables 2a-2e ->
-# 3a-3e, supplementary S1a-S2e -> S2a-S3e). Only the displayed captions
-# follow it: `label` in TABLES is the manuscript number, `id` the file name
-# and the key the footnote rules use, so table_0.html, table_1a.html,
-# supp_1a.html and so on keep their names.
+# 3a-3e, supplementary S1a-S2e -> S2a-S3e) and again on 2026-11-11, when the
+# effectiveness-by-stopping cross-table (src/06.clinical_quantities.r) moved
+# from Table 4 to Table 2: side-effect tables 2a-2c -> 3a-3c, effectiveness
+# tables 3a-3e -> 4a-4e; Table 1, Table 5 and the supplementary tables kept
+# their numbers. Only the displayed captions follow it: `label` in TABLES is
+# the main-text number, `supp_label` the number of its supplementary table
+# (S2a-S3e, unchanged on 2026-11-11), `id` the file name and the key the
+# footnote rules use, so table_0.html, table_1a.html, supp_1a.html and so on
+# keep their names.
+#
+# Main-text tables make no distinction between the two survey cohorts (ruling
+# 2026-11-11): Table 1 describes the sample overall only. The cohorts are
+# named only in the survey-cohort sensitivity tables S5a-S5e.
 #
 # Convention for the Results tables, matching the existing manuscript:
 #   - one row per parameter significant after Bonferroni correction in the
@@ -21,7 +30,8 @@
 #   - a row significant only after adjustment appears in parentheses alone
 #
 # Output: markdown to docs/manuscript-tables-current.md, and one ready-to-paste
-# HTML file per table in docs/manuscript-tables/ (table_0, table_1a-2e,
+# HTML file per table in docs/manuscript-tables/ (table_0 = Table 1,
+# table_1a-1c = Tables 3a-3c, table_2a-2e = Tables 4a-4e,
 # supp_1a-2e, the drug-class tables supp_class_1a, 1c, 2a, 2d, and the
 # survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy, the
 # drug-adjusted within/between table supp_drug and the strict blank-checklist
@@ -222,25 +232,25 @@ n_footnote <- function(tab, level) {
 }
 
 TABLES <- list(
-  list(id = "1a", label = "2a", outcome = "Number of Side Effects", family = "glmm", effect = "RR",
+  list(id = "1a", label = "3a", supp_label = "2a", outcome = "Number of Side Effects", family = "glmm", effect = "RR",
        title = "Variables significantly associated with the number of side effects"),
-  list(id = "1b", label = "2b", outcome = "Side effect severity rating", family = "legacy", effect = "OR",
+  list(id = "1b", label = "3b", supp_label = "2b", outcome = "Side effect severity rating", family = "legacy", effect = "OR",
        title = "Variables significantly associated with side effect severity rating"),
-  list(id = "1c", label = "2c", outcome = "Stopped due to Side Effects", family = "glmm", effect = "OR",
+  list(id = "1c", label = "3c", supp_label = "2c", outcome = "Stopped due to Side Effects", family = "glmm", effect = "OR",
        title = "Variables significantly associated with stopping a medication because of side effects"),
-  list(id = "2a", label = "3a", outcome = "Effectiveness", family = "glmm", effect = "OR",
+  list(id = "2a", label = "4a", supp_label = "3a", outcome = "Effectiveness", family = "glmm", effect = "OR",
        title = "Variables significantly associated with effectiveness"),
-  list(id = "2b", label = "3b", outcome = "Benefit rating", family = "legacy", effect = "OR",
+  list(id = "2b", label = "4b", supp_label = "3b", outcome = "Benefit rating", family = "legacy", effect = "OR",
        title = "Variables significantly associated with benefit rating"),
-  list(id = "2c", label = "3c", outcome = "Number of best aspects", family = "legacy", effect = "OR",
+  list(id = "2c", label = "4c", supp_label = "3c", outcome = "Number of best aspects", family = "legacy", effect = "OR",
        title = "Variables significantly associated with the number of best aspects"),
   # "Occurrence of remission" was participant-level wording for what is in fact a
   # per-medication outcome: remission is recorded for each antidepressant, and
   # participants who took more than one often differ across them (the share is
   # computed by src/05.manuscript_numbers.r).
-  list(id = "2d", label = "3d", outcome = "Remission", family = "glmm", effect = "OR",
+  list(id = "2d", label = "4d", supp_label = "3d", outcome = "Remission", family = "glmm", effect = "OR",
        title = "Variables significantly associated with remission on a medication"),
-  list(id = "2e", label = "3e", outcome = "First improvement duration", family = "legacy", effect = "OR",
+  list(id = "2e", label = "4e", supp_label = "3e", outcome = "First improvement duration", family = "legacy", effect = "OR",
        title = "Variables significantly associated with first improvement duration")
 )
 
@@ -288,11 +298,12 @@ md <- c(
 )
 
 # ------------------------------------------------------------------------------
-# Table 1 (file table_0.html): sample description by survey cohort
+# Table 1 (file table_0.html): sample description, overall
 # ------------------------------------------------------------------------------
 # Counts are n (% of those with a known value); continuous variables are mean
 # (SD). The Missing column is the number (and share) of all participants in
-# `dat` without a value.
+# `dat` without a value. The sample is described as one group: the main-text
+# tables do not split it by survey cohort (ruling 2026-11-11).
 
 employment_labels <- c(
   In_paid_employment_or_self_employed = "In paid employment or self-employed",
@@ -332,8 +343,7 @@ marital_from_dummies <- function(d) {
 }
 
 describe_sample <- function(d) {
-  cohorts <- levels(droplevels(factor(d$cohort)))
-  groups <- c(split(seq_len(nrow(d)), factor(d$cohort, levels = cohorts)), Overall = list(seq_len(nrow(d))))
+  groups <- list(Overall = seq_len(nrow(d)))
   n_all <- nrow(d)
   missing_cell <- function(x) fmt_n_pct(sum(is.na(x)), n_all)
 
@@ -403,9 +413,7 @@ sample_body <- sample_tab %>% select(-label, -italic) %>% {
 }
 sample_foot <- paste0(
   "Participants in the per-participant frame: everyone with a depressive or anxiety ",
-  "disorder who ticked at least one of the 28 named antidepressants. Baseline: GLAD sign-up ",
-  "with the standalone medication questionnaire; SA8: the later sign-up survey, which carries ",
-  "the medication items itself. n (%) of those with ",
+  "disorder who ticked at least one of the 28 named antidepressants. n (%) of those with ",
   "a known value, or mean (SD). Missing: participants without a value, of all ",
   commafy(nrow(dat)), ". ",
   if ("age" %in% names(dat)) "Education is" else "Age and education are",
@@ -418,14 +426,14 @@ writeLines(
 )
 md <- c(
   md, "",
-  "#### Table 1: Sample characteristics by survey cohort",
+  "#### Table 1: Sample characteristics",
   sample_foot,
   md_table(sample_header, sample_body)
 )
 message("  wrote table 1 (table_0.html, ", nrow(sample_body), " rows)")
 
 # ------------------------------------------------------------------------------
-# Tables 2a-3e (files table_1a-2e): significant associations
+# Tables 3a-4e (files table_1a-2e): significant associations
 # ------------------------------------------------------------------------------
 for (spec in TABLES) {
   fam <- families[[spec$family]]
@@ -470,7 +478,7 @@ for (spec in TABLES) {
 }
 
 # ------------------------------------------------------------------------------
-# Supplementary Tables S2a-S3e (files supp_1a-2e): every estimate behind each Results table
+# Supplementary Tables S2a-S3e (files supp_1a-2e): every estimate behind Tables 3a-4e
 # ------------------------------------------------------------------------------
 # One supplementary table per Results table, with the same outcome and model
 # family: every parameter of every predictor set, significant or not, with the
@@ -579,7 +587,7 @@ supp_footnote <- function(tab, spec) {
 
 supp_index <- character()
 for (spec in TABLES) {
-  sid <- paste0("S", spec$label)
+  sid <- paste0("S", spec$supp_label)
   title <- sub("^Variables significantly associated with", "All modelled associations with", spec$title)
   fam <- families[[spec$family]]
   if (is.null(fam)) {
@@ -722,13 +730,13 @@ cohort_counts <- function(d, rows = TRUE) {
   paste0(names(tab), " ", commafy(as.integer(tab)), collapse = ", ")
 }
 cohort_long_note <- paste0(
-  "Survey cohort: Baseline (GLAD sign-up with the standalone medication questionnaire) or SA8 (the later ",
-  "sign-up survey); medication observations ", cohort_counts(dat_long), "; participants ",
+  "Survey cohort: Baseline (the earlier version of the GLAD sign-up questionnaire) or SA8 (the later ",
+  "version); medication observations ", cohort_counts(dat_long), "; participants ",
   cohort_counts(dat_long, rows = FALSE), "."
 )
 cohort_person_note <- paste0(
-  "Survey cohort: Baseline (GLAD sign-up with the standalone medication questionnaire) or SA8 (the later ",
-  "sign-up survey); participants ", cohort_counts(dat, rows = FALSE), "."
+  "Survey cohort: Baseline (the earlier version of the GLAD sign-up questionnaire) or SA8 (the later ",
+  "version); participants ", cohort_counts(dat, rows = FALSE), "."
 )
 
 cohort_supp_footnote <- function(tab, spec) {
@@ -1025,7 +1033,7 @@ if (length(family_missing$strict)) {
       "with nothing ticked, counts as 0 side effects and as not stopped because of side effects. Right: the same ",
       "models under a strict rule, in which such a medication counts as 0 only when its \"No side effects\" box ",
       "was ticked; otherwise its number of side effects and whether it was stopped because of side effects are ",
-      "missing (", strict_se_recoded_text(strict_info), " of ", commafy(strict_info$participants_recoded),
+      "missing (", strict_se_recoded_text(strict_info, by_cohort = FALSE), " of ", commafy(strict_info$participants_recoded),
       " participants; ", commafy(strict_info$participants_lose_all_n_se),
       " participants are left with no known number of side effects). ",
       "The within-person and between-person terms are recomputed from the strict values. ",

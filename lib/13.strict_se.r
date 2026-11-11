@@ -69,10 +69,12 @@ apply_strict_se <- function(data, vars = WITHIN_BETWEEN_VARS, id = "ID") {
   data
 }
 
-# "3,299 rows (Baseline 2,454, SA8 845)": the recoded rows, for logs and
-# footnotes.
-strict_se_recoded_text <- function(info) {
-  by <- info$rows_recoded_by_cohort
+# "3,299 rows (Baseline 2,454, SA8 845)": the recoded rows, for logs and the
+# markdown index. `by_cohort = FALSE` gives "3,299 rows" alone, for table
+# footnotes, which do not split the sample by survey cohort (ruling
+# 2026-11-11; only the survey-cohort tables S5a-S5e name the cohorts).
+strict_se_recoded_text <- function(info, by_cohort = TRUE) {
+  by <- if (by_cohort) info$rows_recoded_by_cohort else NULL
   paste0(
     formatC(info$rows_recoded, format = "d", big.mark = ","), " rows",
     if (length(by)) {

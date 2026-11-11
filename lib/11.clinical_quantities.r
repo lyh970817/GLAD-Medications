@@ -255,3 +255,78 @@ ci_text <- function(est, boot, scale = 100, digits = 1) {
   f <- function(x) formatC(scale * x, format = "f", digits = digits)
   paste0(f(est), " [", f(q[[1]]), ", ", f(q[[2]]), "]")
 }
+
+# ------------------------------------------------------------------------------
+# Table text (Tables 2 and 5)
+# ------------------------------------------------------------------------------
+# Kept here rather than in src/06 so that the captions, row labels and
+# footnotes can be rebuilt and checked without fitting anything. Main-text
+# tables make no distinction between the survey cohorts (ruling 2026-11-11).
+#
+# Main-text numbers of the tables src/06 writes or cites (renumbered
+# 2026-11-11: the cross-table 4 -> 2, effectiveness tables 3a-3e -> 4a-4e).
+CLINICAL_TABLE_NUMBERS <- c(
+  cross = "2", predicted = "5", effectiveness = "4a", remission = "4d"
+)
+CLINICAL_TABLE_TITLES <- c(
+  cross = "Reported effectiveness by stopping because of side effects, per medication",
+  predicted = "Predicted probabilities of reported effectiveness and remission by side-effect measures"
+)
+clinical_table_heading <- function(which) {
+  paste0("#### Table ", CLINICAL_TABLE_NUMBERS[[which]], ": ", CLINICAL_TABLE_TITLES[[which]])
+}
+
+# Table 2 footnote. `effective_stopped` and `not_effective_not_stopped` are the
+# overall cells of the two derived proportions ("k / n: est% [lo, hi]").
+cross_table_footnote <- function(effective_stopped, not_effective_not_stopped, n_boot) {
+  paste0(
+    "Medications (rows of the longitudinal frame: participant x named antidepressant taken). Columns: stopped ",
+    "because of side effects. Cells: n (row %); the Total row gives the column distribution. Unknown: ",
+    "effectiveness \"don't know\", not answered or not shown; stop status unknown because the number of ",
+    "side effects is unknown or the stop item was seen and not answered (a medication with no side ",
+    "effects counts as not stopped). Of medications reported as working moderately or very well and with ",
+    "a known stop status, stopped because of side effects: ", effective_stopped,
+    ". Of medications reported as not working at all and with a known stop status, not stopped: ",
+    not_effective_not_stopped, ". 95% CI by a participant cluster bootstrap (",
+    formatC(n_boot, format = "d", big.mark = ","), " resamples of participants, percentile interval), which ",
+    "respects the clustering of medications within participants."
+  )
+}
+
+# Table 5 italic heading row of each outcome block.
+pp_outcome_headings <- function() {
+  c(
+    Effectiveness = paste0(
+      "Effectiveness: probability of each reported effectiveness category (Table ",
+      CLINICAL_TABLE_NUMBERS[["effectiveness"]], ")"
+    ),
+    Remission = paste0(
+      "Remission: probability of remission on the medication (Table ", CLINICAL_TABLE_NUMBERS[["remission"]], ")"
+    )
+  )
+}
+
+# Table 5 footnote.
+pp_footnote <- function(any_unadjusted, n_boot) {
+  te <- CLINICAL_TABLE_NUMBERS[["effectiveness"]]
+  tr <- CLINICAL_TABLE_NUMBERS[["remission"]]
+  paste0(
+    "Predicted probability of each outcome category for a medication, from the ",
+    if (any_unadjusted) "longitudinal models (adjusted where marked, otherwise unadjusted)" else
+      "adjusted longitudinal models (sex, starting age, cumulative medication count and PHQ-9)",
+    ", each side-effect measure in its own model, with the participant random intercept: ordinal logistic for ",
+    "effectiveness, logistic for remission. ",
+    "Predictions are averaged over the observed covariate values of the model's own medication observations ",
+    "with the random intercept set to 0, i.e. for a typical participant (conditional, not marginal over ",
+    "the random effect). Stopped vs not stopped: the same medication with the participant's own mean ",
+    "(between-person term) kept at its observed value, i.e. the within-person contrast. Mean number of side ",
+    "effects: the participant's mean at its 25th and 75th percentile over the participants in the model, ",
+    "the within-person term at 0. Severity rating (0-5): 25th and 75th percentile over participants. ",
+    "95% CI: parametric bootstrap of the fixed effects (", formatC(n_boot, format = "d", big.mark = ","),
+    " multivariate normal draws from their estimated covariance, including the effectiveness thresholds; ",
+    "percentile interval); differences are from the same draws. OR: the adjusted estimate of Table ", te,
+    " (effectiveness, per step towards better effectiveness) or Table ", tr, " (remission). The remission ",
+    "models are the cached fits; the three effectiveness models were refitted with the same formula and ",
+    "complete-case rows, reproducing Table ", te, "'s estimates."
+  )
+}

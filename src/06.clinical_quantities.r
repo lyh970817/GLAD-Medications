@@ -5,11 +5,19 @@
 # in cache/clinical_fits/ and reused, so only the first run fits them (20-50
 # minutes each, three at a time; CLINICAL_WORKERS sets the number of workers).
 #
-# A. Table 4 (provisional number): reported effectiveness by stopping because
-#    of side effects, per medication, from `dat_long`, overall and by cohort,
-#    with unknown values kept as their own row and column; and two derived
-#    proportions with participant cluster-bootstrap 95% CIs.
-# B. Table 5 (provisional number): predicted probabilities of each outcome
+# Numbering (2026-11-11): the cross-table is Table 2 (was 4), the cached
+# effectiveness and remission tables it checks against are Tables 4a and 4d
+# (were 3a and 3d); Table 5 kept its number. The numbers and titles live in
+# CLINICAL_TABLE_NUMBERS / CLINICAL_TABLE_TITLES (lib/11.clinical_quantities.r),
+# with the table footnotes, so they can be checked without fitting.
+#
+# A. Table 2: reported effectiveness by stopping because of side effects, per
+#    medication, from `dat_long`, with unknown values kept as their own row
+#    and column; and two derived proportions with participant cluster-bootstrap
+#    95% CIs. The table and its footnote are for the sample overall (no survey
+#    cohort in main-text tables, ruling 2026-11-11); the by-cohort counts and
+#    proportions are still computed, checked and written as number keys.
+# B. Table 5: predicted probabilities of each outcome
 #    category by the side-effect measures, from the adjusted longitudinal
 #    models: for remission the cached fits in `glmm_models_cov` (else the
 #    unadjusted `glmm_models`), for effectiveness the three refits. The
@@ -22,7 +30,7 @@
 #    coefficients or covariance.
 #
 # Output (MANUSCRIPT_OUT_DIR, default docs/):
-#   manuscript-tables/table_cross_effectiveness_stopping.html  (Table 4)
+#   manuscript-tables/table_cross_effectiveness_stopping.html  (Table 2)
 #   manuscript-tables/table_predicted_probabilities.html       (Table 5)
 #   manuscript-tables-current.md: both tables, in a block between the
 #     "BEGIN/END src/06.clinical_quantities.r" markers that is replaced on every
@@ -42,8 +50,8 @@
 # Checks (the run stops if one fails): the cross-table margins equal the rows
 # of `dat_long` by cohort and the medication counts in
 # manuscript-numbers-current.md; every predicted contrast has the sign of its
-# odds ratio in the cached adjusted table (Tables 3a and 3d); before that, the
-# refitted effectiveness models must reproduce Table 3a's N, odds ratios and
+# odds ratio in the cached adjusted table (Tables 4a and 4d); before that, the
+# refitted effectiveness models must reproduce Table 4a's N, odds ratios and
 # CIs (to two decimals).
 #
 # plyr, attached after dplyr, masks mutate(), summarise() and count(); keep them
@@ -83,8 +91,10 @@ add <- function(section, key, value, definition) {
 }
 
 # ==============================================================================
-# A. Effectiveness by stopping because of side effects (Table 4)
+# A. Effectiveness by stopping because of side effects (Table 2)
 # ==============================================================================
+CROSS_SECTION <- paste0("Effectiveness by stopping because of side effects (Table ",
+  CLINICAL_TABLE_NUMBERS[["cross"]], ")")
 EFF_LEVELS <- c("0" = "Not at all", "1" = "Moderately", "2" = "Very well")
 STOP_LEVELS <- c("0" = "Not stopped", "1" = "Stopped")
 UNKNOWN <- "Unknown"
@@ -177,7 +187,7 @@ derived <- map_dfr(names(derived_specs), function(nm) {
 
 for (r in seq_len(nrow(derived))) {
   x <- derived[r, ]
-  add("Effectiveness by stopping because of side effects (Table 4)",
+  add(CROSS_SECTION,
     paste0(x$quantity, "_", cohort_key(x$group)),
     paste0(fmt_pct(x$est), "% [", fmt_pct(x$lo), ", ", fmt_pct(x$hi), "] (", commafy(x$k), " of ", commafy(x$n), ")"),
     paste0(x$text, ", ", x$group, "; of medications with a known stop status, from ", commafy(x$n_id),
@@ -186,7 +196,7 @@ for (r in seq_len(nrow(derived))) {
 for (g in names(cross_blocks)) {
   cnt <- attr(cross_blocks[[g]], "counts")
   for (e in rownames(cnt)) for (s in colnames(cnt)) {
-    add("Effectiveness by stopping because of side effects (Table 4)",
+    add(CROSS_SECTION,
       paste0("cross_", cohort_key(e), "_", cohort_key(s), "_", cohort_key(g)),
       fmt_n_pct(cnt[e, s], sum(cnt[e, ])),
       paste0("Medications (rows of `dat_long`), ", g, ": effectiveness ", e, ", ", s,
@@ -194,37 +204,21 @@ for (g in names(cross_blocks)) {
   }
 }
 
+# The table shows the sample overall only: no group heading rows, no cohort
+# blocks.
 cross_header <- c("Effectiveness", unname(STOP_LEVELS), UNKNOWN, "Total")
-cross_body <- bind_rows(map(names(cross_blocks), function(g) {
-  b <- cross_blocks[[g]]
-  bind_rows(
-    tibble(Effectiveness = paste0(g, " (n = ", commafy(length(groups[[g]])), ")"),
-      !!!setNames(as.list(rep("", ncol(b) - 1)), names(b)[-1])),
-    b
-  )
-}))
-cross_italic <- cross_body$Effectiveness %in% paste0(names(groups), " (n = ", commafy(lengths(groups)), ")")
-derived_text <- function(q) {
-  x <- filter(derived, quantity == q)
-  paste0(x$group, " ", x$cell, collapse = "; ")
-}
-cross_foot <- paste0(
-  "Medications (rows of the longitudinal frame: participant x named antidepressant taken). Columns: stopped ",
-  "because of side effects. Cells: n (row %); the Total row gives the column distribution. Unknown: ",
-  "effectiveness \"don't know\", not answered or not shown; stop status unknown because the number of ",
-  "side effects is unknown or the stop item was seen and not answered (a medication with no side ",
-  "effects counts as not stopped). Of medications reported as working moderately or very well and with ",
-  "a known stop status, stopped because of side effects: ", derived_text("effective_stopped"),
-  ". Of medications reported as not working at all and with a known stop status, not stopped: ",
-  derived_text("not_effective_not_stopped"), ". 95% CI by a participant cluster bootstrap (",
-  commafy(N_CLUSTER_BOOT), " resamples of participants, percentile interval), which respects the ",
-  "clustering of medications within participants."
+cross_body <- cross_blocks[["Overall"]]
+attr(cross_body, "counts") <- NULL
+cross_italic <- rep(FALSE, nrow(cross_body))
+derived_overall <- function(q) filter(derived, quantity == q, group == "Overall")$cell
+cross_foot <- cross_table_footnote(
+  derived_overall("effective_stopped"), derived_overall("not_effective_not_stopped"), N_CLUSTER_BOOT
 )
 writeLines(
   html_table(cross_header, cross_body, cross_foot, italic_rows = cross_italic),
   file.path(out_dir, "table_cross_effectiveness_stopping.html")
 )
-message("  wrote Table 4 (table_cross_effectiveness_stopping.html, ", nrow(cross_body), " rows)")
+message("  wrote Table ", CLINICAL_TABLE_NUMBERS[["cross"]], " (table_cross_effectiveness_stopping.html, ", nrow(cross_body), " rows)")
 
 # ==============================================================================
 # B. Predicted probabilities (Table 5)
@@ -238,7 +232,7 @@ SE_SETS <- list(
 )
 pp_outcomes <- c(Effectiveness = "effectiveness", Remission = "remission")
 CATEGORIES <- list(Effectiveness = unname(EFF_LEVELS), Remission = "Remission")
-TABLE_REF <- c(Effectiveness = "3a", Remission = "3d")
+TABLE_REF <- c(Effectiveness = CLINICAL_TABLE_NUMBERS[["effectiveness"]], Remission = CLINICAL_TABLE_NUMBERS[["remission"]])
 
 FOCAL_TERM <- c(stopped = "stopped_due_to_se_within", n_se = "n_se_between", se_rating = "se_rating")
 SET_LABELS <- c(
@@ -279,7 +273,7 @@ locate_frame <- function(outcome, terms) {
 # within/between terms over all rows), and clmm_job() takes fit_glmm()'s
 # complete cases. The complete-case N and participants must equal the cached
 # set's before anything is fitted, and the refitted odds ratios and CIs must
-# equal Table 3a's to two decimals before anything is predicted.
+# equal Table 4a's to two decimals before anything is predicted.
 eff_sets <- map(SE_SETS, ~ find_set_by_terms(glmm_models_cov[["Effectiveness"]], .x))
 if (any(map_lgl(eff_sets, is.null))) {
   stop("Adjusted effectiveness set(s) not in glmm_models_cov: ", paste(names(eff_sets)[map_lgl(eff_sets, is.null)], collapse = ", "))
@@ -314,10 +308,10 @@ for (k in names(eff_fits)) {
   same <- function(x, y) round(x, 2) == round(y, 2) | abs(x - y) < 1e-4
   ok <- all(same(mine$Coefficient, cached$Coefficient), same(mine$CI_low, cached$CI_low), same(mine$CI_high, cached$CI_high))
   if (!isTRUE(ok)) {
-    stop("Refitted effectiveness / ", k, " does not reproduce Table 3a:\n",
+    stop("Refitted effectiveness / ", k, " does not reproduce Table ", TABLE_REF[["Effectiveness"]], ":\n",
       paste(capture.output(print(bind_cols(mine, rename_with(cached, ~ paste0("cached_", .x))))), collapse = "\n"))
   }
-  message("  check: effectiveness / ", k, " refit reproduces Table 3a (",
+  message("  check: effectiveness / ", k, " refit reproduces Table ", TABLE_REF[["Effectiveness"]], " (",
     paste0(mine$term, " ", formatC(mine$Coefficient, format = "f", digits = 2), " [",
       formatC(mine$CI_low, format = "f", digits = 2), ", ", formatC(mine$CI_high, format = "f", digits = 2), "]",
       collapse = "; "), "); fitted in ", round(f$seconds / 60, 1), " min")
@@ -392,7 +386,7 @@ for (outcome in names(pp_outcomes)) {
     pr <- predict_scenarios(fr, pred, sc$fns, draws)
 
     # Check: the contrast follows the sign of the focal odds ratio in the
-    # cached table (Table 3a / 3d, adjusted). For the ordinal outcome a
+    # cached table (Table 4a / 4d, adjusted). For the ordinal outcome a
     # positive log odds ratio moves probability to the higher categories, so the
     # top category moves with it and the bottom one against it.
     beta <- pred$theta[[FOCAL_TERM[[set_name]]]]
@@ -452,10 +446,7 @@ for (r in seq_len(nrow(pp))) {
 
 pp_header <- c("Side-effect measure", "Value", "Outcome category", "Predicted probability, % [95% CI]",
   "Difference, percentage points [95% CI]", "Adjusted OR [95% CI]", "N (observations / participants)")
-OUTCOME_HEADINGS <- c(
-  Effectiveness = "Effectiveness: probability of each reported effectiveness category (Table 3a)",
-  Remission = "Remission: probability of remission on the medication (Table 3d)"
-)
+OUTCOME_HEADINGS <- pp_outcome_headings()
 pp_body <- list()
 pp_italic <- logical()
 for (outcome in unique(pp$outcome)) {
@@ -476,28 +467,10 @@ pp_body <- bind_rows(pp_body)
 names(pp_body) <- pp_header
 
 any_unadjusted <- any(pp$source != "glmm_models_cov")
-pp_foot <- paste0(
-  "Predicted probability of each outcome category for a medication, from the ",
-  if (any_unadjusted) "longitudinal models (adjusted where marked, otherwise unadjusted)" else
-    "adjusted longitudinal models (sex, starting age, cumulative medication count and PHQ-9)",
-  ", each side-effect measure in its own model, with the participant random intercept: ordinal logistic for ",
-  "effectiveness, logistic for remission. ",
-  "Predictions are averaged over the observed covariate values of the model's own medication observations ",
-  "with the random intercept set to 0, i.e. for a typical participant (conditional, not marginal over ",
-  "the random effect). Stopped vs not stopped: the same medication with the participant's own mean ",
-  "(between-person term) kept at its observed value, i.e. the within-person contrast. Mean number of side ",
-  "effects: the participant's mean at its 25th and 75th percentile over the participants in the model, ",
-  "the within-person term at 0. Severity rating (0-5): 25th and 75th percentile over participants. ",
-  "95% CI: parametric bootstrap of the fixed effects (", commafy(N_PARAM_BOOT), " multivariate normal ",
-  "draws from their estimated covariance, including the effectiveness thresholds; percentile interval); ",
-  "differences are from the same draws. OR: the adjusted estimate of Table 3a (effectiveness, per step ",
-  "towards better effectiveness) or Table 3d (remission). The remission models are the cached fits; the ",
-  "three effectiveness models were refitted with the same formula and complete-case rows, reproducing ",
-  "Table 3a's estimates."
-)
+pp_foot <- pp_footnote(any_unadjusted, N_PARAM_BOOT)
 writeLines(html_table(pp_header, pp_body, pp_foot, italic_rows = pp_italic),
   file.path(out_dir, "table_predicted_probabilities.html"))
-message("  wrote Table 5 (table_predicted_probabilities.html, ", nrow(pp_body), " rows)")
+message("  wrote Table ", CLINICAL_TABLE_NUMBERS[["predicted"]], " (table_predicted_probabilities.html, ", nrow(pp_body), " rows)")
 
 # ==============================================================================
 # C. One side effect above the person's own mean (number keys only, not Table 5)
@@ -599,13 +572,13 @@ block <- c(
   "",
   paste0("Generated ", format(Sys.Date()), " by `src/06.clinical_quantities.r` from `dat_long`, the cached"),
   "remission models and three refitted adjusted effectiveness models (`cache/clinical_fits/`).",
-  "Table numbers are provisional.",
+  "Table numbers as renumbered on 2026-11-11 (cross-table Table 2, predicted probabilities Table 5).",
   "",
-  "#### Table 4: Reported effectiveness by stopping because of side effects, per medication",
+  clinical_table_heading("cross"),
   paste0("`manuscript-tables/table_cross_effectiveness_stopping.html`. ", cross_foot),
   md_table(cross_header, cross_body),
   "",
-  "#### Table 5: Predicted probabilities of reported effectiveness and remission by side-effect measures",
+  clinical_table_heading("predicted"),
   paste0("`manuscript-tables/table_predicted_probabilities.html`. ", pp_foot),
   md_table(pp_header, pp_body),
   "",
