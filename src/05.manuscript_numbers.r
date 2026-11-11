@@ -53,6 +53,79 @@ pct_of <- function(k, n) fmt_n_pct(k, n)
 
 skipped <- function(what) paste0("skipped: needs ", what)
 
+# Estimate keys from the cached models: "OR[CI], p = ..." (estimate [95% CI],
+# Bonferroni-corrected p), with "(convergence warning)" appended for a fit that
+# reported one. For a hurdle model the first (logistic) part is used, as in the
+# tables. `adj` is a family already passed through multi_adjust().
+est_text <- function(st, label) {
+  r <- st[st$Parameter == label, ]
+  ci <- r[[grep("^Coeff_CI", colnames(r), value = TRUE)[1]]][1]
+  pv <- r[[grep("^p", colnames(r), value = TRUE)[1]]][1]
+  conv <- attr(st, "converged")
+  paste0(ci, ", p = ", fmt_p(pv), if (!is.null(conv) && !isTRUE(conv)) " (convergence warning)" else "")
+}
+effect_of <- function(dep) if (dep == "Number of Side Effects") "RR" else "OR"
+n_text <- function(st) {
+  paste0("N = ", commafy(attr(st, "n")[1]),
+    if (!is.null(attr(st, "n_id"))) paste0(" observations / ", commafy(attr(st, "n_id")), " participants") else " participants")
+}
+
+# The decomposed medication-level predictors (lib/09.within_between.r) and the
+# outcomes each is decomposed for: start age and the cumulative medication
+# count on all four longitudinal outcomes, the two side-effect measures on
+# effectiveness and remission only.
+wb_vars_all <- c(n_se = "number of side effects", stopped_due_to_se = "stopped because of side effects",
+  start_age = "start age", cumulative_med_count = "cumulative medication count")
+wb_vars_for <- function(dep) {
+  if (dep %in% c("Effectiveness", "Remission")) names(wb_vars_all) else c("start_age", "cumulative_med_count")
+}
+# "adjusted for sex, start age, ..., PHQ-9[, extra]", without the predictor's
+# own whole version in its own set (covs_for_set()).
+wb_adjusted_for <- function(v, extra = NULL) {
+  own <- v %in% c("start_age", "cumulative_med_count")
+  others <- c("sex", unname(wb_vars_all[setdiff(c("start_age", "cumulative_med_count"), v)]), "PHQ-9", extra)
+  paste0("adjusted for ", paste(others, collapse = ", "),
+    if (own) paste0(" (not for ", wb_vars_all[[v]], " itself)") else "")
+}
+
+# One key per within and between term, `<prefix>_<outcome>_<term>`, for every
+# decomposed predictor `vars_for(outcome)` of the family `adj`. `model_text(v)`
+# describes the model's adjustment.
+add_wb_estimates <- function(prefix, adj, n_deps, model_text, vars_for = wb_vars_for, what = "") {
+  for (dep in names(adj)) {
+    for (v in vars_for(dep)) {
+      term_labels <- within_between_labels(v, labels)
+      terms <- within_between_terms(v)
+      st <- Filter(function(x) !is.null(x) && all(term_labels %in% x$Parameter), adj[[dep]])
+      if (!length(st)) {
+        add(paste0(prefix, "_", cohort_key(dep), "_", v), "not fitted",
+          paste0(what, "within/between estimates of ", wb_vars_all[[v]], " for ", dep))
+        next
+      }
+      st <- st[[1]]
+      for (k in seq_along(terms)) {
+        add(paste0(prefix, "_", cohort_key(dep), "_", terms[[k]]), est_text(st, term_labels[[k]]),
+          paste0(effect_of(dep), " [95% CI], Bonferroni-corrected p (x", n_deps, "), for ", term_labels[[k]], " on ",
+            dep, "; ", what, "one model with both terms, ", model_text(v), ", ", n_text(st)))
+      }
+    }
+  }
+}
+
+# One key for one parameter `label` of outcome `dep` in the family `adj`, from
+# the first set that estimates it.
+add_param_estimate <- function(key, adj, dep, label, n_deps, model_text) {
+  st <- Filter(function(x) !is.null(x) && label %in% x$Parameter, adj[[dep]])
+  if (!length(st)) {
+    add(key, "not fitted", paste0(clean_label(label), " on ", dep, "; ", model_text))
+    return(invisible())
+  }
+  st <- st[[1]]
+  add(key, est_text(st, label),
+    paste0(effect_of(dep), " [95% CI], Bonferroni-corrected p (x", n_deps, "), for ", clean_label(label), " on ", dep,
+      "; ", model_text, ", ", n_text(st)))
+}
+
 # ------------------------------------------------------------------------------
 section <- "Extract"
 # ------------------------------------------------------------------------------
@@ -110,9 +183,43 @@ if (exists("ilovedata_person") && exists("person_drug") && "took_recoded" %in% n
   add_by_cohort("takers_neither_depression_nor_anxiety", flow,
     function(i) commafy(sum(flow$any_named[i] & !flow$in_dat[i] & !is.na(dep_anx[i]))),
     "Named-antidepressant takers left out because they report neither a depressive nor an anxiety disorder")
+  add_by_cohort("takers_excluded", flow,
+    function(i) commafy(sum(flow$any_named[i] & !flow$in_dat[i])),
+    paste0("Named-antidepressant takers left out by the diagnosis filter: `takers_neither_depression_nor_anxiety` ",
+      "plus `takers_diagnosis_unknown`"))
 } else {
   add("who_enters", skipped("data/ilovedata_person.rds and the munge's `person_drug` (with `took_recoded`)"),
     "The inclusion funnel is recomputed from the extracts")
+}
+
+# ------------------------------------------------------------------------------
+section <- "Nortriptyline correction"
+# ------------------------------------------------------------------------------
+# The glad_med nortriptyline recode (ruling `nort_collision`, 2026-11-11): the
+# munge (munge/01.dat_clean.r, "glad_med NORTRIPTYLINE COLLISION") leaves its
+# counts in `nort_recode_summary`.
+if (exists("nort_recode_summary")) {
+  nrs <- nort_recode_summary
+  add("nort_responses_total", commafy(nrs$ticks),
+    "glad_med nortriptyline ticks in the extract, before the recode")
+  add("nort_recoded_responses", commafy(nrs$recoded),
+    paste0("glad_med nortriptyline ticks recoded to not ticked (the pre-edit \"a different antidepressant\"): ",
+      "no stored value in the hidden list's nortriptyline choice (QID10_12), or a stored value in its \"None\" ",
+      "choice (QID10_0)"))
+  add("nort_kept_responses", commafy(nrs$kept),
+    "glad_med nortriptyline ticks kept as genuine (QID10_12 stored, QID10_0 not)")
+  add("nort_rule_history_disagreements", commafy(nrs$rule_history_disagreements),
+    paste0("glad_med nortriptyline ticks on which the rule and the display of the prescription-history page ",
+      "disagree: ", commafy(nrs$kept_no_history), " kept without a history page, ",
+      commafy(nrs$recoded_with_history), " recoded with one"))
+  add("nort_participants_no_named_drug", commafy(nrs$participants_no_named_drug),
+    "People whose only named antidepressant was a recoded tick, so who have no named drug after the recode (any diagnosis)")
+  add("nort_participants_leaving", commafy(nrs$participants_leaving_dat),
+    paste0("Of these, the people with a known depressive or anxiety disorder, i.e. who would otherwise be in ",
+      "`dat` and `dat_long` and leave the analytic sample through the recode"))
+} else {
+  add("nort_correction", skipped("`nort_recode_summary` from munge/01.dat_clean.r"),
+    "Counts of the glad_med nortriptyline recode")
 }
 
 # ------------------------------------------------------------------------------
@@ -124,7 +231,9 @@ add_by_cohort("participants_dat_long", dat_long, function(i) commafy(n_distinct(
   "Participants in `dat_long` (longitudinal frame); the munge requires these to be the people in `dat`")
 add_by_cohort("medication_observations_dat_long", dat_long, function(i) commafy(length(i)),
   "Rows of `dat_long`: participant x named antidepressant taken")
-add("cohort_overlap", commafy(length(intersect(dat$ID[dat$cohort == cohorts[1]], dat$ID[dat$cohort != cohorts[1]]))),
+add_by_cohort("female_pct", dat, function(i) pct_of(sum(dat$sex[i] == "Female", na.rm = TRUE), sum(!is.na(dat$sex[i]))),
+  "Female participants in `dat` (of participants with a known sex), as in Table 1")
+add("cohort_overlap",commafy(length(intersect(dat$ID[dat$cohort == cohorts[1]], dat$ID[dat$cohort != cohorts[1]]))),
   "Participants in more than one cohort (the munge stops if this is not 0)")
 
 # ------------------------------------------------------------------------------
@@ -189,6 +298,10 @@ for (v in names(glmm_outcomes)) {
   add_by_cohort(paste0(v, "_known_participants"), dat_long, function(i) commafy(n_distinct(dat_long$ID[i][known[i]])),
     paste0("Participants with at least one row with a known ", tolower(glmm_outcomes[[v]])))
 }
+add_by_cohort("effectiveness_unknown_rows", dat_long,
+  function(i) pct_of(sum(is.na(dat_long$effectiveness[i])), length(i)),
+  paste0("Rows of `dat_long` with no known effectiveness (\"don't know\", unanswered or not shown; of all rows); ",
+    "the Unknown row of Table 2"))
 
 level_shares <- function(prefix, x, d, levels, labels, what, unit = "rows") {
   for (j in seq_along(levels)) {
@@ -393,6 +506,74 @@ if (all(objects_present("glmm_models_cov"))) {
     "Adjusted within/between estimates of start age and cumulative medication count")
 }
 
+# The other longitudinal estimates the text quotes: the unadjusted
+# within/between estimates of all four decomposed predictors, the main adjusted
+# ones of the two side-effect measures (on effectiveness and remission; start
+# age and the cumulative count are above), the severity rating (constant within
+# person, one term) on effectiveness and remission, and being married on
+# stopping because of side effects.
+glmm_extra <- list(
+  unadjusted = list(obj = "glmm_models", text = function(v) "no covariates (participant random intercept only)"),
+  adjusted = list(obj = "glmm_models_cov", text = function(v) wb_adjusted_for(v))
+)
+married_label <- labels[["Not_in_relationship_Married"]]
+for (kind in names(glmm_extra)) {
+  g <- glmm_extra[[kind]]
+  if (!all(objects_present(g$obj))) {
+    add(paste0(kind, "_longitudinal_estimates"), skipped(paste0("`", g$obj, "` from src/02.regression.r")),
+      paste0("The ", kind, " longitudinal within/between, severity-rating and married estimates"))
+    next
+  }
+  models <- get(g$obj)
+  n_g <- length(models)
+  adj_g <- multi_adjust(models, n_deps = n_g)
+  add_wb_estimates(kind, adj_g, n_g, g$text,
+    vars_for = if (kind == "adjusted") function(dep) setdiff(wb_vars_for(dep), names(wb_covariates)) else wb_vars_for,
+    what = if (kind == "adjusted") "main adjusted model, " else "unadjusted model, ")
+  rest_text <- if (kind == "adjusted") wb_adjusted_for("se_rating") else g$text(NULL)
+  for (dep in c("Effectiveness", "Remission")) {
+    add_param_estimate(paste0(kind, "_", cohort_key(dep), "_se_rating"), adj_g, dep, labels[["se_rating"]], n_g,
+      rest_text)
+  }
+  add_param_estimate(paste0(kind, "_stopped_due_to_side_effects_married"), adj_g, "Stopped due to Side Effects",
+    married_label, n_g, rest_text)
+}
+
+# Per-participant estimates quoted in the text (Tables 3b, 4b, 4c and 4e): the
+# mean duration per antidepressant on the four per-participant outcomes and the
+# treatment discontinuation proportion on the three effectiveness outcomes,
+# unadjusted (`sef_models`, `eff_models`) and adjusted (`*_compete`), both
+# Bonferroni-corrected by the four per-participant outcomes.
+legacy_needs <- c("sef_models", "eff_models", "sef_models_compete", "eff_models_compete")
+if (all(objects_present(legacy_needs))) {
+  n_legacy <- length(c(sef_models, eff_models))
+  legacy_fams <- list(
+    unadjusted = list(adj = multi_adjust(c(sef_models, eff_models), n_deps = n_legacy), text = "unadjusted"),
+    adjusted = list(adj = multi_adjust(c(sef_models_compete, eff_models_compete), n_deps = n_legacy),
+      text = "adjusted for sex, average starting age and the number of psychiatric diagnosis types in the immediate family")
+  )
+  # The cached `labels` lacks these two; the text is that of `labels_extra` in
+  # src/02.regression.r, which is baked into the cached fits.
+  legacy_preds <- c(mean_duration = "Mean duration per antidepressant (years)",
+    proportion_stopped = "Treatment discontinuation (per 10% of antidepressants stopped)")
+  for (kind in names(legacy_fams)) {
+    f <- legacy_fams[[kind]]
+    for (dep in names(f$adj)) {
+      # The discontinuation proportion is a predictor of the effectiveness
+      # outcomes only.
+      preds <- if (dep %in% names(eff_models)) names(legacy_preds) else "mean_duration"
+      for (p in preds) {
+        add_param_estimate(paste0(kind, "_", cohort_key(dep), "_", p), f$adj, dep, legacy_preds[[p]], n_legacy,
+          paste0("per-participant model, ", f$text))
+      }
+    }
+  }
+} else {
+  add("per_participant_estimates",
+    skipped(paste0("`", paste(legacy_needs[!objects_present(legacy_needs)], collapse = "`, `"), "` from src/02.regression.r")),
+    "Per-participant estimates of the mean duration and the treatment discontinuation proportion")
+}
+
 # Sensitivity analysis: the adjusted models refitted with family history added
 # to the covariates (glmm_models_cov_famhist) against the main adjusted models.
 if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_famhist")))) {
@@ -476,6 +657,23 @@ add_significance_changes <- function(prefix, main, sens, what) {
       what, " models, over matched associations"))
 }
 
+# The family-history sensitivity set in the same form: the significance
+# changes split into lost and gained (the total above is
+# `sensitivity_significance_changes`; family history itself is not matched,
+# as there) and its within/between estimates.
+if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_famhist")))) {
+  n_fh <- length(glmm_models_cov)
+  add_significance_changes("famhist", flat_p(glmm_models_cov, n_deps = n_fh),
+    flat_p(glmm_models_cov_famhist, n_deps = n_fh) %>% filter(Parameter != labels[["fh_diagnosis_types"]]),
+    "longitudinal")
+  add_wb_estimates("famhist", multi_adjust(glmm_models_cov_famhist, n_deps = n_fh), n_fh,
+    function(v) wb_adjusted_for(v, "the number of psychiatric diagnosis types in the immediate family"),
+    what = "family-history sensitivity set, ")
+} else {
+  add("famhist_estimates", skipped("`glmm_models_cov` and `glmm_models_cov_famhist` from src/02.regression.r"),
+    "Family-history sensitivity analysis: significance changes and within/between estimates")
+}
+
 # ------------------------------------------------------------------------------
 section <- "Drug-class sensitivity analysis"
 # ------------------------------------------------------------------------------
@@ -523,6 +721,9 @@ if (all(objects_present("glmm_models_cov_class"))) {
     add_significance_changes("class_sensitivity", flat_p(glmm_models_cov), flat_p(glmm_models_cov_class),
       "longitudinal")
   }
+  add_wb_estimates("class_adjusted", class_adj, length(class_adj),
+    function(v) paste0(wb_adjusted_for(v, "drug class (TCA, SNRI, NaSSA, SARI vs SSRI)"), ", class-scoped frame"),
+    what = "drug-class sensitivity set, ")
 } else {
   add("class_effects", skipped("`glmm_models_cov_class` from src/02.regression.r"),
     "Drug-class contrasts (TCA, SNRI, NaSSA, SARI vs SSRI) for the four longitudinal outcomes")
@@ -565,6 +766,18 @@ if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_cohort")))) {
     "sex, start age, cumulative medication count and PHQ-9", "observations")
   add_significance_changes("cohort_sensitivity_longitudinal", flat_p(glmm_models_cov), flat_p(glmm_models_cov_cohort),
     "longitudinal")
+  # The cohort-adjusted estimates the survey-cohort paragraph quotes.
+  n_co <- length(glmm_models_cov_cohort)
+  cohort_adj <- multi_adjust(glmm_models_cov_cohort, n_deps = n_co)
+  add_wb_estimates("cohort_adjusted", cohort_adj, n_co, function(v) wb_adjusted_for(v, "survey cohort"),
+    what = "survey-cohort sensitivity set, ")
+  for (dep in c("Effectiveness", "Remission")) {
+    add_param_estimate(paste0("cohort_adjusted_", cohort_key(dep), "_se_rating"), cohort_adj, dep,
+      labels[["se_rating"]], n_co, wb_adjusted_for("se_rating", "survey cohort"))
+  }
+  add_param_estimate("cohort_adjusted_remission_student", cohort_adj, "Remission",
+    labels[["In_paid_employment_or_self_employed_Full_or_part_time_student"]], n_co,
+    wb_adjusted_for("employment", "survey cohort"))
 } else {
   add("cohort_effects_longitudinal", skipped("`glmm_models_cov` and `glmm_models_cov_cohort` from src/02.regression.r"),
     "Survey-cohort contrasts and significance changes for the four longitudinal outcomes")
@@ -648,6 +861,31 @@ if (all(objects_present(c("glmm_models_cov", "glmm_models_cov_drug")))) {
   # (16: two outcomes x four predictors x two terms).
   add_significance_changes("drug_sensitivity", flat_p(glmm_models_cov), flat_p(glmm_models_cov_drug, n_deps = n_glmm),
     "longitudinal")
+
+  # How much of the drug adjustment's shift in the within-person estimate of
+  # the number of side effects on effectiveness the class adjustment already
+  # produces, on the log odds ratio scale and from the unrounded estimates:
+  # (log OR class - log OR main) / (log OR drug - log OR main).
+  share_key <- "class_share_of_drug_shift_effectiveness_n_se_within"
+  if (all(objects_present("glmm_models_cov_class"))) {
+    wl <- within_between_labels("n_se", labels)[["n_se_within"]]
+    coef_of <- function(models) {
+      st <- Filter(function(x) !is.null(x) && wl %in% x$Parameter, models[["Effectiveness"]])
+      if (!length(st)) NA_real_ else st[[1]]$Coefficient[st[[1]]$Parameter == wl][1]
+    }
+    lo <- log(c(main = coef_of(glmm_models_cov), class = coef_of(glmm_models_cov_class),
+      drug = coef_of(glmm_models_cov_drug)))
+    share <- 100 * (lo[["class"]] - lo[["main"]]) / (lo[["drug"]] - lo[["main"]])
+    add(share_key, if (is.na(share)) "not fitted" else paste0(fmt_num(share, 1), "%"),
+      paste0("Share of the shift in the log odds ratio of ", wl, " on effectiveness from the main adjusted to the ",
+        "drug-adjusted model that the drug-class adjustment already produces: (log OR class - log OR main) / ",
+        "(log OR drug - log OR main), unrounded estimates (OR main ", fmt_num(exp(lo[["main"]]), 3), ", class ",
+        fmt_num(exp(lo[["class"]]), 3), ", drug ", fmt_num(exp(lo[["drug"]]), 3),
+        "); the class model is fitted on the class-scoped frame"))
+  } else {
+    add(share_key, skipped("`glmm_models_cov_class` from src/02.regression.r"),
+      "Share of the drug-adjusted shift in the within-person estimate already produced by class adjustment")
+  }
 } else {
   add("drug_within_between", skipped("`glmm_models_cov` and `glmm_models_cov_drug` from src/02.regression.r"),
     "Drug-adjusted within/between estimates and significance changes for effectiveness and remission")

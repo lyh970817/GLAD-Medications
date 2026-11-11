@@ -187,9 +187,30 @@ local({
   after <- out %>% filter(is_tick(took)) %>% distinct(person_id)
   message("nort_collision: ", nrow(before) - nrow(after),
           " people had no named drug but the recoded tick and leave both frames (`no_listed`).")
+  # Of those, the people who would otherwise have entered the analysis: the
+  # frames keep only people with a known depressive or anxiety disorder (see
+  # in_scope below), so the others would have left anyway.
+  leaving <- person %>%
+    filter(person_id %in% setdiff(before$person_id, after$person_id)) %>%
+    dplyr::mutate(dx = as.character(mhd.depression_and_anxiety))
+  leaving_dat <- sum(!is.na(leaving$dx) & leaving$dx != "No depressive or anxiety disorder")
+
+  # Counts only (no participant rows), for the manuscript numbers
+  # (src/05.manuscript_numbers.r, section "Nortriptyline correction").
+  nort_recode_summary <<- list(
+    ticks = n_ticks,
+    kept = n_kept,
+    recoded = n_recoded,
+    kept_no_history = kept_no_history,
+    recoded_with_history = recoded_with_history,
+    rule_history_disagreements = kept_no_history + recoded_with_history,
+    participants_no_named_drug = nrow(before) - nrow(after),
+    participants_leaving_dat = leaving_dat
+  )
 
   person_drug <<- out
 })
+cache("nort_recode_summary")
 
 # ==============================================================================
 # WHO ENTERS
