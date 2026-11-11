@@ -118,6 +118,49 @@ coerce_glmm_predictor <- function(x) {
   x
 }
 
+# The covariance of a clmm fit, or NULL with the reason. vcov.clmm() inverts the
+# numerical Hessian by a Cholesky factorisation and stops when it is not
+# positive definite; on the corrected data (2026-11-11) one ordinal fit did, and
+# the bare as.matrix(vcov(m)) call took its whole model family down with it.
+clmm_vcov <- function(m) {
+  tryCatch(
+    list(V = as.matrix(stats::vcov(m)), error = NULL),
+    error = function(e) list(V = NULL, error = gsub("\\s+", " ", conditionMessage(e)))
+  )
+}
+
+# Refits tried, in this order, only when a clmm's Hessian is not positive
+# definite; a fit whose Hessian is fine never reaches them, so every cached
+# clean fit is unaffected. A remedy is accepted only if its Hessian is positive
+# definite and its log-likelihood is not worse than the original fit's (to
+# 1e-6). Both are deterministic. With a single random intercept clmm takes its
+# ssr path, where ucminf is supported (tau on the log-SD scale, central
+# difference gradient); the second keeps nlminb but lets it run longer to a
+# tighter tolerance, with a tighter inner (random-mode) Newton tolerance.
+CLMM_HESSIAN_REMEDIES <- list(
+  ucminf = list(method = "ucminf", maxIter = 200, gradTol = 1e-6),
+  nlminb_tight = list(method = "nlminb", maxIter = 200, gradTol = 1e-6,
+    eval.max = 5000, iter.max = 2500, rel.tol = 1e-12)
+)
+
+# A set that produced no estimates because fitting (or extracting from the fit)
+# raised an error: a zero-row table, which bind_models(), multi_adjust(),
+# only_sig() and the manuscript tables already treat as a failed set, marked
+# not converged so report_convergence() lists it with the error message. Never
+# written to the per-set cache, so a rerun tries the fit again.
+failed_fit <- function(dep, indeps, message) {
+  ms <- tibble::tibble(
+    Parameter = character(), Coefficient = numeric(), CI_low = numeric(),
+    CI_high = numeric(), p = numeric(), Coeff_CI = character()
+  )
+  attr(ms, "dep") <- dep
+  attr(ms, "formula") <- paste(dep, "~", paste(indeps, collapse = "+"), "+ (1 | ID)")
+  attr(ms, "fit_warnings") <- paste("ERROR:", message)
+  attr(ms, "converged") <- FALSE
+  attr(ms, "fit_failed") <- TRUE
+  ms
+}
+
 fit_glmm <- function(dep, indeps, data, family = NULL) {
   # Clean data
   # Ensure ID is included in selection for the random effect
@@ -168,46 +211,127 @@ fit_glmm <- function(dep, indeps, data, family = NULL) {
 
   # Warnings used to be discarded, which is how a non-converged fit reached a
   # results table unnoticed. Collect them and hand them back on the result.
-  warns <- character()
-  m <- tryCatch(
-    withCallingHandlers(
-      switch(engine,
-        binomial = glmer(fm, data = fit_data, family = binomial, control = glmm_control()),
-        poisson  = glmer(fm, data = fit_data, family = poisson, control = glmm_control()),
-        family   = glmer(fm, data = fit_data, family = family, control = glmm_control()),
-        clmm     = clmm(fm, data = fit_data, link = "logit"),
-        gaussian = lmer(fm, data = fit_data)
+  # `clmm_control` is NULL for the ordinary fit (clmm's defaults, exactly as
+  # before) and one of CLMM_HESSIAN_REMEDIES for a remedy refit.
+  run_fit <- function(clmm_control = NULL) {
+    w <- character()
+    m <- tryCatch(
+      withCallingHandlers(
+        switch(engine,
+          binomial = glmer(fm, data = fit_data, family = binomial, control = glmm_control()),
+          poisson  = glmer(fm, data = fit_data, family = poisson, control = glmm_control()),
+          family   = glmer(fm, data = fit_data, family = family, control = glmm_control()),
+          clmm     = if (is.null(clmm_control)) {
+            clmm(fm, data = fit_data, link = "logit")
+          } else {
+            clmm(fm, data = fit_data, link = "logit",
+              control = do.call(ordinal::clmm.control, clmm_control))
+          },
+          gaussian = lmer(fm, data = fit_data)
+        ),
+        warning = function(cond) {
+          w <<- c(w, conditionMessage(cond))
+          invokeRestart("muffleWarning")
+        }
       ),
-      warning = function(w) {
-        warns <<- c(warns, conditionMessage(w))
-        invokeRestart("muffleWarning")
+      error = function(e) {
+        w <<- c(w, paste("ERROR:", conditionMessage(e)))
+        NULL
       }
-    ),
-    error = function(e) {
-      warns <<- c(warns, paste("ERROR:", conditionMessage(e)))
-      NULL
-    }
-  )
+    )
+    list(m = m, warns = w)
+  }
+
+  fit <- run_fit()
+  m <- fit$m
+  warns <- fit$warns
 
   if (is.null(m)) {
-    warning(paste("Model failed for", dep, ":", tail(warns, 1)))
-    return(NULL)
+    # A failed fit used to come back NULL, which the per-set cache stored and
+    # the convergence report skipped, so it vanished silently. It now comes
+    # back as a failed set carrying its error (not cached; see failed_fit()).
+    msg <- tail(warns, 1)
+    warning(paste("Model failed for", dep, ":", msg))
+    return(failed_fit(dep, indeps, sub("^ERROR: ", "", msg)))
+  }
+
+  # An ordinal fit whose Hessian is not positive definite has no covariance, so
+  # no standard errors, intervals or p values. Try the remedies in turn and keep
+  # the first whose Hessian is positive definite and whose log-likelihood is not
+  # worse. If none works the fit is kept (its point estimates are still the
+  # optimiser's) but flagged: not converged, intervals and p values NA, no
+  # covariance stored.
+  clmm_v <- NULL
+  remedy <- NULL
+  if (engine == "clmm") {
+    clmm_v <- clmm_vcov(m)
+    if (is.null(clmm_v$V)) {
+      ll0 <- as.numeric(stats::logLik(m))
+      tried <- character()
+      for (rname in names(CLMM_HESSIAN_REMEDIES)) {
+        refit <- run_fit(CLMM_HESSIAN_REMEDIES[[rname]])
+        if (is.null(refit$m)) {
+          tried <- c(tried, paste0(rname, ": ", tail(refit$warns, 1)))
+          next
+        }
+        v2 <- clmm_vcov(refit$m)
+        ll2 <- as.numeric(stats::logLik(refit$m))
+        if (!is.null(v2$V) && is.finite(ll2) && ll2 >= ll0 - 1e-6) {
+          remedy <- paste0(
+            "clmm Hessian not positive definite with the default optimiser (logLik ",
+            format(ll0, digits = 10), "); refitted with ", rname,
+            ": Hessian positive definite, logLik ", format(ll2, digits = 10)
+          )
+          m <- refit$m
+          warns <- refit$warns
+          clmm_v <- v2
+          break
+        }
+        tried <- c(tried, paste0(
+          rname, ": ",
+          if (is.null(v2$V)) "Hessian still not positive definite" else "Hessian positive definite",
+          ", logLik ", format(ll2, digits = 10)
+        ))
+      }
+      if (is.null(clmm_v$V)) {
+        remedy <- paste0(
+          "no remedy accepted (default logLik ", format(ll0, digits = 10), "; ",
+          paste(tried, collapse = "; "), ")"
+        )
+        warns <- c(warns, paste0(
+          "clmm Hessian is not positive definite (", clmm_v$error, "); standard errors, ",
+          "intervals and p values set to NA; ", remedy
+        ))
+      }
+    }
   }
 
   # Extract parameters, then undo the scaling so the estimates are per unit of
-  # the original predictor rather than per standard deviation.
+  # the original predictor rather than per standard deviation. When an ordinal
+  # fit has no covariance parameters() only warns, unseen on a worker; make the
+  # missing intervals and p values explicit instead.
   ms <- rescale_parameters(select_model_fields(m), scales)
+  if (engine == "clmm" && is.null(clmm_v$V)) {
+    ms$CI_low <- NA_real_
+    ms$CI_high <- NA_real_
+    ms$p <- NA_real_
+  }
   re <- random_intercept_summary(m)
 
-  # Store dependent variable
+  # Store dependent variable, and the formula, so a flagged set can be named
   attr(ms, "dep") <- dep
+  attr(ms, "formula") <- fm_str
   # Store sample size, at both levels
   attr(ms, "n") <- nrow(data)
   attr(ms, "n_id") <- length(unique(data$ID))
-  # Convergence provenance, so a bad fit can never again reach a table silently
+  # Convergence provenance, so a bad fit can never again reach a table silently.
+  # A clmm Hessian that is not positive definite counts as a convergence problem.
   attr(ms, "fit_warnings") <- warns
   attr(ms, "converged") <-
-    !any(grepl("converge|unidentifiable|degenerate|singular|ERROR", warns, ignore.case = TRUE))
+    !any(grepl("converge|unidentifiable|degenerate|singular|positive definite|ERROR", warns, ignore.case = TRUE))
+  # The remedy refit (if any) behind this fit, or why none was accepted; NULL
+  # for an ordinary fit.
+  attr(ms, "fit_remedy") <- remedy
   # Participant clustering, reported in Methods
   attr(ms, "re_var") <- re$var
   attr(ms, "icc") <- re$icc
@@ -217,12 +341,14 @@ fit_glmm <- function(dep, indeps, data, family = NULL) {
   # carries no environment; see lib/11.clinical_quantities.r), so keep its
   # thresholds, all fixed coefficients (covariates included) and their
   # covariance. Small, and it changes no estimate. Fits cached before
-  # 2026-11-11 do not carry them.
-  if (engine == "clmm") {
+  # 2026-11-11 do not carry them. A fit with no covariance (Hessian not
+  # positive definite, no remedy accepted) keeps none of the three, so
+  # cached_clmm_predictor() treats it as a set that carries no thresholds.
+  if (engine == "clmm" && !is.null(clmm_v$V)) {
     attr(ms, "clmm_alpha") <- m$alpha
     attr(ms, "clmm_beta") <- m$beta
     th <- c(names(m$alpha), names(m$beta))
-    attr(ms, "clmm_vcov") <- as.matrix(stats::vcov(m))[th, th]
+    attr(ms, "clmm_vcov") <- clmm_v$V[th, th]
   }
 
   return(ms)

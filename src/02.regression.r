@@ -89,7 +89,7 @@ fit_model <-
       # Fit GLMM
       m <- fit_glmm(dep, all_fixed, data)
 
-      if (is.null(m)) return(NULL)
+      if (is.null(m) || isTRUE(attr(m, "fit_failed"))) return(m)
 
       # Filter out covariates from the result if requested (to show only main effects of interest)
       if (!is.null(covs)) {
@@ -339,6 +339,11 @@ fit_set_cached <- function(dep, indeps, covs, data) {
     saveRDS(NULL, path)
     return(NULL)
   }
+  # A fit that raised an error is returned, flagged, but not cached, so the
+  # next run tries it again.
+  if (isTRUE(attr(m, "fit_failed"))) {
+    return(m)
+  }
 
   if (length(real_covs)) {
     # Remove adjustment covariates from output (including expanded factor terms)
@@ -348,6 +353,20 @@ fit_set_cached <- function(dep, indeps, covs, data) {
   m <- format_model(m)
   saveRDS(m, path)
   m
+}
+
+# The per-worker step. Anything that throws for one set -- fitting, extracting
+# from the fit, formatting, reading or writing its cache file -- comes back as
+# a failed set carrying the error message (failed_fit(), lib/02.fit_funs.r),
+# instead of an error that parLapplyLB() re-raises on the master and that takes
+# the whole family, and the hour of fits around it, down. Not cached.
+fit_set_safely <- function(dep, indeps, covs, data) {
+  tryCatch(
+    fit_set_cached(dep, indeps, covs, data),
+    error = function(e) {
+      failed_fit(dep, unique(c(indeps, setdiff(covs, indeps))), gsub("\\s+", " ", conditionMessage(e)))
+    }
+  )
 }
 
 # The sets are independent, so fit them concurrently.
@@ -380,7 +399,7 @@ fit_family <- function(deps, indeps_list_for, covs, data) {
 
   fits <- if (todo == 0) {
     # Everything is already on disk; no point paying for workers.
-    map(jobs, function(job) fit_set_cached(job$dep, job$indeps, job$covs, data))
+    map(jobs, function(job) fit_set_safely(job$dep, job$indeps, job$covs, data))
   } else {
     cl <- parallel::makePSOCKcluster(glmm_workers)
     on.exit(parallel::stopCluster(cl), add = TRUE)
@@ -397,7 +416,7 @@ fit_family <- function(deps, indeps_list_for, covs, data) {
     })
     parallel::clusterExport(
       cl,
-      c("fit_set_cached", "set_cache_path", "drop_covariate_terms",
+      c("fit_set_cached", "fit_set_safely", "set_cache_path", "drop_covariate_terms",
         "is_covariate_parameter", "GLMM_RECIPE_VERSION", "glmm_fit_dir",
         "force_refit", "labels"),
       envir = globalenv()
@@ -411,7 +430,7 @@ fit_family <- function(deps, indeps_list_for, covs, data) {
     # Load balancing matters: the ordinal Effectiveness fits take minutes while
     # the binomial ones take seconds.
     parallel::parLapplyLB(cl, jobs, function(job, data) {
-      fit_set_cached(job$dep, job$indeps, job$covs, data)
+      fit_set_safely(job$dep, job$indeps, job$covs, data)
     }, data = data)
   }
 
@@ -562,14 +581,37 @@ glmm_models_cov_strict <- fit_family(
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
 # a model that failed to converge cannot reach a table unnoticed the way the
 # adjusted Remission models did.
+#
+# A clmm whose Hessian is not positive definite (no remedy accepted) and a set
+# whose fit raised an error (fit_set_safely()) are both not converged and are
+# listed here, by formula where the fit recorded it (fits since 2026-11-11). A
+# set rescued by a remedy refit (CLMM_HESSIAN_REMEDIES) is listed separately,
+# with the remedy, and does not count as a problem.
 report_convergence <- function(models, label) {
   bad <- list()
+  remedied <- list()
   for (dep in names(models)) {
     for (i in seq_along(models[[dep]])) {
       m <- models[[dep]][[i]]
-      if (is.null(m) || isTRUE(attr(m, "converged"))) next
+      if (is.null(m)) next
+      what <- if (!is.null(attr(m, "formula"))) {
+        attr(m, "formula")
+      } else if (nrow(m)) {
+        m$Parameter[1]
+      } else {
+        "no estimates"
+      }
+      if (isTRUE(attr(m, "converged"))) {
+        if (!is.null(attr(m, "fit_remedy"))) {
+          remedied[[length(remedied) + 1]] <- paste0(
+            label, " / ", dep, " / set ", i, " (", what, "): ", attr(m, "fit_remedy")
+          )
+        }
+        next
+      }
       bad[[length(bad) + 1]] <- paste0(
-        label, " / ", dep, " / set ", i, " (", m$Parameter[1], "): ",
+        label, " / ", dep, " / set ", i, " (", what, ")",
+        if (isTRUE(attr(m, "fit_failed"))) " [FAILED, no estimates]" else "", ": ",
         paste(gsub("\n.*", "", attr(m, "fit_warnings")), collapse = "; ")
       )
     }
@@ -579,6 +621,10 @@ report_convergence <- function(models, label) {
     for (b in bad) message("   ", b)
   } else {
     message("   All model sets converged cleanly in ", label)
+  }
+  if (length(remedied)) {
+    message("   ", length(remedied), " model set(s) in ", label, " converged only after a remedy refit:")
+    for (r in remedied) message("   ", r)
   }
   invisible(bad)
 }
