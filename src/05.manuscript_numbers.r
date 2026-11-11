@@ -69,18 +69,24 @@ if (exists("ilovedata_manifest")) {
 section <- "Who enters"
 # ------------------------------------------------------------------------------
 # The funnel from the extract to `dat`, recomputed from the extracts with the
-# munge's own rules (munge/01.dat_clean.r, "WHO ENTERS").
-if (exists("ilovedata_person") && exists("ilovedata_person_drug")) {
+# munge's own rules (munge/01.dat_clean.r, "WHO ENTERS"). The ticks are read
+# from the munge's `person_drug`, the extract after the glad_med nortriptyline
+# recode (ruling `nort_collision`); a recoded tick was the first list's "a
+# different antidepressant", so it counts as an answer to the list, not as a
+# named drug.
+if (exists("ilovedata_person") && exists("person_drug") && "took_recoded" %in% names(person_drug)) {
   person <- ilovedata_person %>% filter(cohort %in% cohorts)
-  named_tick <- ilovedata_person_drug %>%
+  named_tick <- person_drug %>%
     group_by(person_id) %>%
-    dplyr::summarise(any_named = any(is_tick(took)), .groups = "drop")
+    dplyr::summarise(any_named = any(is_tick(took)), any_recoded = any(!is.na(took_recoded)),
+                     .groups = "drop")
   other_cols <- intersect(c("prescription.none", "prescription.a_different_antidepressant.1"), names(person))
   flow <- person %>%
     left_join(named_tick, by = "person_id") %>%
     dplyr::mutate(
       any_named = coalesce(any_named, FALSE),
-      any_other = if (length(other_cols)) rowSums(across(all_of(other_cols), is_tick)) > 0 else FALSE,
+      any_other = (if (length(other_cols)) rowSums(across(all_of(other_cols), is_tick)) > 0 else FALSE) |
+        coalesce(any_recoded, FALSE),
       med_survey = case_when(
         cohort == "Baseline" ~ in_glad_med,
         cohort == "SA8" ~ in_glad_sa8_signup,
@@ -105,7 +111,7 @@ if (exists("ilovedata_person") && exists("ilovedata_person_drug")) {
     function(i) commafy(sum(flow$any_named[i] & !flow$in_dat[i] & !is.na(dep_anx[i]))),
     "Named-antidepressant takers left out because they report neither a depressive nor an anxiety disorder")
 } else {
-  add("who_enters", skipped("data/ilovedata_person.rds and data/ilovedata_person_drug.rds"),
+  add("who_enters", skipped("data/ilovedata_person.rds and the munge's `person_drug` (with `took_recoded`)"),
     "The inclusion funnel is recomputed from the extracts")
 }
 

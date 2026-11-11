@@ -22,17 +22,22 @@
 #
 #   ilovedata_person.rds       one row per person: cohort, survey membership,
 #                              every person-level variable the analysis uses,
-#                              under its pipeline name, and one response date
-#                              per survey (`response_date_<survey>`, Date)
+#                              under its pipeline name, one response date
+#                              per survey (`response_date_<survey>`, Date), and
+#                              `hidden_list_none_recorded` (see "Display
+#                              evidence" below)
 #   ilovedata_person_drug.rds  one row per person x antidepressant for the 28
 #                              antidepressants the analysis covers, with the
-#                              per-drug items under short names, and
+#                              per-drug items under short names,
 #                              `se_recorded`, the number of the drug's 30
-#                              side-effect cells with a stored raw value
+#                              side-effect cells with a stored raw value, and
+#                              the display evidence `hidden_list_recorded` and
+#                              `history_recorded`
 #   ilovedata_manifest.rds     provenance: snapshot, pipeline commit, store,
 #                              decisions root, export time, the anchor
 #                              resolved for each per-drug item and survey,
-#                              and the Anchors each response date is read from
+#                              the Anchors each response date is read from,
+#                              and the columns the display evidence counts
 #
 # Cohorts. Baseline people are those in the GLAD sign-up survey `glad`, the
 # standalone medication survey `glad_med` or the Family History survey
@@ -530,6 +535,113 @@ se_recorded <- se_raw %>%
              by = c("survey", "response_column_id")) %>%
   count(person_id, survey, drug, name = "se_recorded")
 
+# Display evidence for the first drug list -----------------------------------
+
+# Before a survey edit in early March 2020, glad_med exported the first list's
+# "A different antidepressant" into the nortriptyline column QID5_11
+# (`prescription.nortriptyline`); QID5_13 holds nothing before then. The sentinel
+# coding cannot tell those ticks from real ones, but two raw cells can:
+#
+#   - glad_med's hidden question QID10 ("Antidepressants - Hidden list")
+#     carries forward the drugs ticked on the first list. Qualtrics stores a
+#     value (-77) in the cell of each choice the question displayed and leaves
+#     the others empty.
+#   - its "None" cell QID10_0 holds a value when the question displayed every
+#     choice, a show-all fallback.
+#
+# and each drug's prescription-history page (the `antidepressant_why*` loop
+# page) holds raw values only where it was displayed. So record, from
+# `responses` directly as for `se_recorded`:
+#
+#   person_drug$hidden_list_recorded  1 if the drug's QID10 cell holds a stored
+#                                     raw value (any, including -77), else 0;
+#                                     NA outside glad_med and for drugs with no
+#                                     QID10 choice (the second list's drugs)
+#   person_drug$history_recorded      the number of the drug's prescription-
+#                                     history cells with a stored raw value
+#                                     (display-order columns excluded)
+#   person$hidden_list_none_recorded  1 if QID10_0 holds a stored raw value,
+#                                     else 0; NA for people not in glad_med
+#
+# These are evidence only; what they mean for a tick is ruled in the munge
+# (munge/01.dat_clean.r, ruling `nort_collision`).
+HIDDEN_LIST_SURVEY <- BASELINE_SURVEYS[["med"]]
+HIDDEN_LIST_QID <- "QID10"
+resolutions <- anchor_resolutions_as_of(con, snapshot) %>%
+  distinct(anchor, survey = survey_id, response_column_id)
+
+hidden_cols <- resolutions %>%
+  filter(survey == HIDDEN_LIST_SURVEY,
+         grepl(paste0("^", HIDDEN_LIST_QID, "_-?[0-9]+$"), response_column_id))
+hidden_pat <- "^antidepressant1\\.(.+)\\.[0-9]+(__[0-9]+)?$"
+if (!nrow(hidden_cols) || !all(grepl(hidden_pat, hidden_cols$anchor)) ||
+    anyDuplicated(hidden_cols$response_column_id)) {
+  stop(HIDDEN_LIST_QID, " in ", HIDDEN_LIST_SURVEY, " does not resolve to one ",
+       "`antidepressant1.<drug>.<n>` Anchor per column at snapshot ", snapshot)
+}
+hidden_cols <- hidden_cols %>%
+  mutate(drug = sub(hidden_pat, "\\1", anchor),
+         kind = ifelse(drug == "none", "hidden_none", "hidden_list"))
+if (anyDuplicated(hidden_cols$drug) ||
+    !identical(hidden_cols$drug[hidden_cols$response_column_id == paste0(HIDDEN_LIST_QID, "_12")], "nortriptyline") ||
+    !identical(hidden_cols$drug[hidden_cols$response_column_id == paste0(HIDDEN_LIST_QID, "_0")], "none") ||
+    !all(setdiff(hidden_cols$drug, c("none", "a_different_antidepressant")) %in% DRUGS)) {
+  stop(HIDDEN_LIST_QID, " choices do not map to the first list's drugs as expected: ",
+       paste(hidden_cols$response_column_id, hidden_cols$drug, sep = "=", collapse = ", "))
+}
+hidden_drugs <- intersect(DRUGS, hidden_cols$drug)
+message("  hidden list ", HIDDEN_LIST_QID, ": ", length(hidden_drugs),
+        " drugs, None = ", HIDDEN_LIST_QID, "_0")
+
+drug_suffix <- function(d) paste0("\\.(", d, "|", d, "_e\\.g\\._st_johns_wort)(__[0-9]+)?$")
+history_cols <- resolutions %>%
+  filter(survey %in% MED_SURVEYS, grepl("^antidepressant_why", anchor),
+         !grepl("_DO_|_DO$", response_column_id))
+history_hits <- vapply(DRUGS, function(d) grepl(drug_suffix(d), history_cols$anchor),
+                       logical(nrow(history_cols)))
+if (!is.matrix(history_hits)) history_hits <- matrix(history_hits, nrow = nrow(history_cols))
+if (any(rowSums(history_hits) > 1)) stop("A prescription-history Anchor matches two drugs")
+history_cols <- history_cols[rowSums(history_hits) == 1, ] %>%
+  mutate(drug = DRUGS[max.col(history_hits[rowSums(history_hits) == 1, , drop = FALSE])],
+         kind = "history")
+if (anyDuplicated(history_cols[c("survey", "response_column_id")])) {
+  stop("A prescription-history column resolves to two Anchors")
+}
+missing_history <- anti_join(expand_grid(drug = DRUGS, survey = MED_SURVEYS) %>%
+                               semi_join(drug_map, by = c("drug", "survey")),
+                             distinct(history_cols, drug, survey), by = c("drug", "survey"))
+if (nrow(filter(missing_history, survey == HIDDEN_LIST_SURVEY))) {
+  stop("No prescription-history columns for ", HIDDEN_LIST_SURVEY, ": ",
+       paste(missing_history$drug[missing_history$survey == HIDDEN_LIST_SURVEY], collapse = ", "))
+}
+
+evidence_cols <- bind_rows(
+  select(hidden_cols, survey, response_column_id, drug, kind),
+  select(history_cols, survey, response_column_id, drug, kind)
+)
+duckdb::duckdb_register(con, "glad_medications_evidence_cols",
+                        distinct(evidence_cols, survey_id = survey, response_column_id, drug, kind))
+evidence_raw <- DBI::dbGetQuery(con, sprintf(
+  "SELECT c.kind, r.survey_id AS survey, r.person_id, c.drug, count(*) AS n
+     FROM responses r
+     JOIN glad_medications_evidence_cols c
+       ON c.survey_id = r.survey_id AND c.response_column_id = r.response_column_id
+    WHERE r.first_seen_snapshot <= %1$d AND r.last_seen_snapshot >= %1$d
+      AND r.value IS NOT NULL AND r.value <> ''
+    GROUP BY c.kind, r.survey_id, r.person_id, c.drug",
+  as.integer(snapshot)
+))
+duckdb::duckdb_unregister(con, "glad_medications_evidence_cols")
+evidence_raw$n <- as.integer(evidence_raw$n)
+
+hidden_recorded <- evidence_raw %>%
+  filter(kind == "hidden_list") %>%
+  transmute(person_id, survey, drug, hidden_n = n)
+history_recorded <- evidence_raw %>%
+  filter(kind == "history") %>%
+  transmute(person_id, survey, drug, history_recorded = n)
+hidden_none_ids <- unique(evidence_raw$person_id[evidence_raw$kind == "hidden_none"])
+
 person_drug <- per_drug %>%
   pivot_wider(names_from = item, values_from = value) %>%
   left_join(person[c("person_id", "cohort")], by = "person_id") %>%
@@ -550,7 +662,21 @@ person_drug <- person_drug %>%
   left_join(se_recorded, by = c("person_id", "survey", "drug")) %>%
   mutate(se_recorded = coalesce(se_recorded, 0L)) %>%
   relocate(se_recorded, .before = nse) %>%
+  # The display evidence is joined after the row filter, so it adds columns,
+  # never rows.
+  left_join(hidden_recorded, by = c("person_id", "survey", "drug")) %>%
+  left_join(history_recorded, by = c("person_id", "survey", "drug")) %>%
+  mutate(
+    hidden_list_recorded = ifelse(survey == HIDDEN_LIST_SURVEY & drug %in% hidden_drugs,
+                                  as.integer(coalesce(hidden_n, 0L) > 0), NA_integer_),
+    history_recorded = coalesce(history_recorded, 0L)
+  ) %>%
+  select(-hidden_n) %>%
   arrange(person_id, match(drug, DRUGS))
+
+person <- person %>%
+  mutate(hidden_list_none_recorded = ifelse(in_glad_med, as.integer(person_id %in% hidden_none_ids),
+                                            NA_integer_))
 
 # Write -----------------------------------------------------------------------
 
@@ -566,6 +692,7 @@ manifest <- tibble(
 )
 attr(manifest, "anchor_map") <- bind_rows(drug_map, imprv_map)
 attr(manifest, "response_date_anchors") <- date_anchors
+attr(manifest, "display_evidence_columns") <- evidence_cols
 
 saveRDS(person, file.path(out_dir, "ilovedata_person.rds"))
 saveRDS(person_drug, file.path(out_dir, "ilovedata_person_drug.rds"))

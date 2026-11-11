@@ -30,6 +30,11 @@ person_drug <- ilovedata_person_drug
 if (!"se_recorded" %in% names(person_drug)) {
   stop("data/ilovedata_person_drug.rds predates the `se_recorded` column; re-run extract/ilovedata_export.R.")
 }
+if (!all(c("hidden_list_recorded", "history_recorded") %in% names(person_drug)) ||
+    !"hidden_list_none_recorded" %in% names(person)) {
+  stop("data/ilovedata_person*.rds predate the display-evidence columns (`hidden_list_recorded`, ",
+       "`history_recorded`, `hidden_list_none_recorded`); re-run extract/ilovedata_export.R.")
+}
 
 # People who answered both sign-ups (cohort "Baseline+SA8"): Baseline wins
 # (ruling 2026-11-08). The export already applies it: such a person carries
@@ -63,12 +68,139 @@ if (length(overlap_ids) > 0) {
 antidepressants <- unique(person_drug$drug)
 
 # ==============================================================================
+# glad_med NORTRIPTYLINE COLLISION (ruling `nort_collision`, 2026-11-11)
+# ==============================================================================
+# Until a survey edit in early March 2020, glad_med exported the first drug
+# list's "A different antidepressant" into the nortriptyline column QID5_11
+# (`prescription.nortriptyline`); QID5_13, the column that holds it later, is
+# empty before then. So most early nortriptyline ticks are "a different
+# antidepressant" ticks. The export records two raw cells of glad_med's hidden
+# question QID10, which carries the first list's ticks forward (see "Display
+# evidence" in extract/ilovedata_export.R): whether the nortriptyline choice
+# QID10_12 holds a stored value (`hidden_list_recorded`), and whether the "None"
+# choice QID10_0 does (`hidden_list_none_recorded`), which happens when the
+# question fell back to showing every choice.
+#
+# Rule: a glad_med nortriptyline tick is genuine if and only if QID10_12 holds a
+# stored value and QID10_0 does not. Any other tick is recoded to not ticked
+# (took = 0, an answered 0: not missing and not "not shown") and flagged in
+# `took_recoded`. Only glad_med nortriptyline is touched; SA8 asks the list in
+# its own columns and is unaffected. A recoded tick is no longer "taken", so its
+# history and side-effect cells create no row in either frame, and a person
+# whose only named drug it was has no named drug and leaves through the
+# existing `no_listed` rule (WHO ENTERS below).
+#
+# The checks below stop the munge if the evidence no longer looks the way it
+# did when the rule was made. The early responses are fixed, so the recoded
+# count and the rule's disagreements with the history page are pinned; later
+# glad_med responses can only add genuine ticks.
+NORT_COLLISION <- list(
+  survey = "glad_med",
+  drug = "nortriptyline",
+  flag = "pre-edit QID5_11 collision",
+  min_ticks = 973L,       # glad_med nortriptyline ticks in the 2026-11-11 export
+  recoded = 738L,         # ticks recoded by the rule
+  disagree = 2L,          # ticks on which the rule and the history page disagree
+  min_hidden_share = 0.98 # other first-list drugs: share of ticks with a QID10 entry
+)
+local({
+  nc <- NORT_COLLISION
+  none <- person %>% select(person_id, hidden_list_none_recorded)
+  pd <- person_drug %>%
+    dplyr::mutate(row = dplyr::row_number()) %>%
+    left_join(none, by = "person_id")
+  target <- pd$survey == nc$survey & pd$drug == nc$drug & is_tick(pd$took)
+  if (anyNA(pd$hidden_list_recorded[target]) || anyNA(pd$hidden_list_none_recorded[target])) {
+    stop("glad_med nortriptyline ticks without hidden-list evidence; re-run the export.")
+  }
+  genuine <- pd$hidden_list_recorded == 1 & pd$hidden_list_none_recorded == 0
+  recode <- target & !genuine
+  history_shown <- pd$history_recorded > 0
+
+  # The rule against the prescription-history page, which is displayed only for
+  # a drug carried forward by the hidden list.
+  n_ticks <- sum(target)
+  n_recoded <- sum(recode)
+  n_kept <- n_ticks - n_recoded
+  kept_no_history <- sum(target & genuine & !history_shown)
+  recoded_with_history <- sum(recode & history_shown)
+  message(sprintf(paste0(
+    "nort_collision: %d glad_med nortriptyline ticks; %d kept (QID10_12 stored, QID10_0 not), ",
+    "%d recoded to 0. Rule vs history page: %d kept without a history page, ",
+    "%d recoded with one."), n_ticks, n_kept, n_recoded, kept_no_history, recoded_with_history))
+  if (n_ticks < nc$min_ticks) {
+    stop("nort_collision: ", n_ticks, " glad_med nortriptyline ticks, expected at least ", nc$min_ticks)
+  }
+  if (n_recoded != nc$recoded) {
+    stop("nort_collision: the rule recodes ", n_recoded, " ticks, expected ", nc$recoded,
+         "; the early glad_med responses or their evidence have changed, so re-examine the rule.")
+  }
+  if (kept_no_history + recoded_with_history != nc$disagree) {
+    stop("nort_collision: the rule and the history page disagree on ",
+         kept_no_history + recoded_with_history, " ticks, expected ", nc$disagree)
+  }
+
+  # Every other first-list drug: nearly every tick has its hidden-list entry, so
+  # the evidence works where nothing collided.
+  other <- pd %>%
+    filter(survey == nc$survey, drug != nc$drug, !is.na(hidden_list_recorded), is_tick(took)) %>%
+    group_by(drug) %>%
+    dplyr::summarise(ticks = n(), share = mean(hidden_list_recorded == 1), .groups = "drop")
+  if (nrow(other) < 12 || any(other$share < nc$min_hidden_share)) {
+    stop("nort_collision: hidden-list coverage of the other first-list drugs is below ",
+         nc$min_hidden_share, " (lowest ", round(min(other$share), 4), ", ",
+         other$drug[which.min(other$share)], ") or drugs are missing (", nrow(other), " of 12).")
+  }
+  message(sprintf("nort_collision: other first-list glad_med drugs, %d ticks, %.1f%%-%.1f%% with a hidden-list entry.",
+                  sum(other$ticks), 100 * min(other$share), 100 * max(other$share)))
+
+  stopifnot(nrow(pd) == nrow(person_drug), identical(pd$row, seq_len(nrow(person_drug))))
+  new_took <- ifelse(recode, 0, pd$took)
+  changed <- xor(is.na(pd$took), is.na(new_took)) |
+    (!is.na(pd$took) & !is.na(new_took) & pd$took != new_took)
+  if (!identical(which(changed), which(recode)) ||
+      any(pd$survey[changed] != nc$survey | pd$drug[changed] != nc$drug)) {
+    stop("nort_collision: the recode touched rows other than glad_med nortriptyline ticks")
+  }
+
+  out <- person_drug
+  out$took <- new_took
+  out$took_recoded <- ifelse(recode, nc$flag, NA_character_)
+
+  # Prevalence after the recode: glad_med nortriptyline among glad_med people
+  # with a named drug, against the same in SA8, whose list did not collide.
+  prev <- function(d, s) {
+    t <- d %>% filter(survey == s, is_tick(took))
+    c(n = sum(t$drug == nc$drug), takers = length(unique(t$person_id)))
+  }
+  g <- prev(out, nc$survey); s8 <- prev(out, "glad_sa8_signup")
+  g_pct <- 100 * g[["n"]] / g[["takers"]]; s8_pct <- 100 * s8[["n"]] / s8[["takers"]]
+  message(sprintf("nort_collision: nortriptyline prevalence among takers, glad_med %.2f%% (%d/%d) vs SA8 %.2f%% (%d/%d).",
+                  g_pct, g[["n"]], g[["takers"]], s8_pct, s8[["n"]], s8[["takers"]]))
+  if (abs(g_pct - s8_pct) > 1) {
+    stop("nort_collision: corrected glad_med nortriptyline prevalence (", round(g_pct, 2),
+         "%) is more than 1 point from SA8's (", round(s8_pct, 2), "%)")
+  }
+
+  # People whose only named drug was a recoded tick.
+  before <- person_drug %>% filter(is_tick(took)) %>% distinct(person_id)
+  after <- out %>% filter(is_tick(took)) %>% distinct(person_id)
+  message("nort_collision: ", nrow(before) - nrow(after),
+          " people had no named drug but the recoded tick and leave both frames (`no_listed`).")
+
+  person_drug <<- out
+})
+
+# ==============================================================================
 # WHO ENTERS
 # ==============================================================================
 # A participant enters when they ticked at least one of the 28 named
 # antidepressants on either list (ruling 2026-11-07). People who ticked "None",
 # and people whose only tick is the second list's "a different antidepressant
-# that isn't listed above", have no named drug and are in neither frame.
+# that isn't listed above", have no named drug and are in neither frame. The
+# ticks are those left after the nortriptyline recode above, so a person whose
+# only "nortriptyline" was glad_med's pre-edit "a different antidepressant" is
+# in neither frame either.
 # Membership is decided by the ticks alone, not by the any-side-effects
 # question or the rating items: in SA8 the pipeline cannot yet mark people who
 # were never routed into the medication section as `not_shown`, so "seen, not
