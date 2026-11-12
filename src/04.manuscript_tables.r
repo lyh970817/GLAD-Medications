@@ -21,7 +21,7 @@
 #
 # Main-text tables make no distinction between the two survey cohorts (ruling
 # 2026-11-11): Table 1 describes the sample overall only. The cohorts are
-# named only in the survey-cohort sensitivity tables S5a-S5e.
+# named only in the reference-only survey-cohort tables (see below).
 #
 # Convention for the Results tables, matching the existing manuscript:
 #   - one row per parameter significant after Bonferroni correction in the
@@ -33,10 +33,12 @@
 # HTML file per table in docs/manuscript-tables/ (table_0 = Table 1,
 # table_1a-1c = Tables 3a-3c, table_2a-2e = Tables 4a-4e,
 # supp_1a-2e, the drug-class tables supp_class_1a, 1c, 2a, 2d, and the
-# survey-cohort tables supp_cohort_1a, 1c, 2a, 2d, legacy, the
 # drug-adjusted within/between table supp_drug and the zero-rule blank-checklist
 # table supp_zero (strict-rule supp_strict until 2026-11-12); file names predate
-# the renumbering, see above). Set
+# the renumbering, see above). The survey-cohort sensitivity tables (owner
+# ruling 2026-11-12: kept for reference, NOT in the manuscript, no S-number) go
+# to docs/reference-tables/ (supp_cohort_1a, 1c, 2a, 2d, legacy) with the
+# index docs/reference-tables-current.md. Set
 # MANUSCRIPT_OUT_DIR to write both somewhere other than docs/,
 # e.g. for a dry run on development data that must not land in tracked files.
 #
@@ -53,6 +55,11 @@ docs_dir <- Sys.getenv("MANUSCRIPT_OUT_DIR", "docs")
 out_dir <- file.path(docs_dir, "manuscript-tables")
 md_path <- file.path(docs_dir, "manuscript-tables-current.md")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+# Reference-only tables: not manuscript tables, so never beside them.
+ref_dir <- file.path(docs_dir, "reference-tables")
+ref_md_path <- file.path(docs_dir, "reference-tables-current.md")
+dir.create(ref_dir, showWarnings = FALSE, recursive = TRUE)
+REF_PREFIX <- "Reference only (not in the manuscript): "
 
 # Model objects each table family needs, all written by src/02.regression.r.
 family_needs <- list(
@@ -716,16 +723,20 @@ md <- c(
 )
 
 # ------------------------------------------------------------------------------
-# Supplementary Tables S5a-S5e (files supp_cohort_1a, 1c, 2a, 2d, legacy): survey cohort
+# Reference-only survey-cohort tables (files supp_cohort_1a, 1c, 2a, 2d, legacy
+# in docs/reference-tables/; NOT manuscript tables, no S-number)
 # ------------------------------------------------------------------------------
+# Owner ruling 2026-11-12: the survey-cohort sensitivity analysis is kept for
+# our own reference and left out of the write-up. These tables were
+# Supplementary Tables S5a-S5e until then.
 # Sensitivity analysis (user ruling 2026-11-09, "Cohort can be included for
 # sensitivity analyses"): the adjusted models with the survey cohort (SA8 vs
-# Baseline) added to the covariates, beside the main adjusted estimates. S5a-S5d
+# Baseline) added to the covariates, beside the main adjusted estimates. Tables a-d
 # are the four longitudinal outcomes (`glmm_models_cov_cohort`, full frame, the
-# same rows as the main adjusted models), S5e the four per-participant outcomes
+# same rows as the main adjusted models), table e the four per-participant outcomes
 # (`sef_models_cohort`, `eff_models_cohort`) in one table. The cohort contrast
 # row comes from the set per outcome that has the cohort as its focal
-# predictor. The S5 numbering is provisional.
+# predictor.
 cohort_counts <- function(d, rows = TRUE) {
   tab <- if (rows) table(d$cohort) else table(d$cohort[!duplicated(d$ID)])
   paste0(names(tab), " ", commafy(as.integer(tab)), collapse = ", ")
@@ -743,7 +754,7 @@ cohort_person_note <- paste0(
 cohort_supp_footnote <- function(tab, spec) {
   failed <- attr(tab, "n_failed")
   paste0(
-    "Sensitivity analysis by survey cohort. Left: the main adjusted longitudinal models (adjusted for ",
+    REF_PREFIX, "sensitivity analysis by survey cohort. Left: the main adjusted longitudinal models (adjusted for ",
     ADJUSTMENT_SETS[["glmm"]], "). Right: the same models, on the same frame, with survey cohort (SA8 vs ",
     "Baseline) added to the covariates; the survey-cohort row is from one model per outcome with the cohort ",
     "as its focal predictor and the same covariates. ", cohort_long_note, " ",
@@ -772,9 +783,9 @@ if (length(family_missing$cohort)) {
   glmm_specs <- Filter(function(sp) sp$family == "glmm", TABLES)
   for (j in seq_along(glmm_specs)) {
     spec <- glmm_specs[[j]]
-    sid <- paste0("S5", letters[j])
+    sid <- paste0("reference table ", letters[j])
     title <- sub("^Variables significantly associated with", "All adjusted associations with", spec$title)
-    title <- paste0(title, ", with and without adjustment for survey cohort")
+    title <- paste0(REF_PREFIX, title, ", with and without adjustment for survey cohort")
     tab <- build_supp_table(cohort_main, cohort_fam, spec$outcome)
     if (is.null(tab)) {
       message("!! no survey-cohort table for ", sid, " (", spec$outcome, ")")
@@ -785,18 +796,18 @@ if (length(family_missing$cohort)) {
     header <- c("Parameter", paste("Adjusted", est), "p", "N", paste("Adjusted + survey cohort", est), "p", "N")
     body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
     file <- paste0("supp_cohort_", spec$id, ".html")
-    writeLines(html_table(header, body, foot), file.path(out_dir, file))
+    writeLines(html_table(header, body, foot), file.path(ref_dir, file))
     cohort_index <- c(
       cohort_index, "",
-      paste0("#### Supplementary Table ", sid, ": ", title),
-      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      paste0("#### ", title),
+      paste0("`reference-tables/", file, "`, ", nrow(body), " rows. ", foot),
       md_table(header, body)
     )
-    message("  wrote survey-cohort table ", sid, " (", nrow(body), " rows)")
+    message("  wrote ", sid, " (", nrow(body), " rows)")
   }
 }
 
-# S5e: the four per-participant outcomes in one table, an italic heading row
+# Reference table e: the four per-participant outcomes in one table, an italic heading row
 # per outcome. The Bonferroni factor is the four per-participant outcomes, as
 # in S2b, S3b, S3c and S3e.
 if (length(family_missing$cohort_legacy)) {
@@ -809,7 +820,7 @@ if (length(family_missing$cohort_legacy)) {
   blocks <- map(legacy_specs, function(spec) {
     tab <- build_supp_table(legacy_main, legacy_cohort, spec$outcome)
     if (is.null(tab)) {
-      message("!! no survey-cohort rows for S5e (", spec$outcome, ")")
+      message("!! no survey-cohort rows for reference table e (", spec$outcome, ")")
       return(NULL)
     }
     heading <- tibble(
@@ -826,13 +837,13 @@ if (length(family_missing$cohort_legacy)) {
     tab <- bind_rows(blocks)
     italic <- unlist(map(blocks, ~ attr(.x, "italic")))
     failed <- Reduce(`+`, map(blocks, ~ attr(.x, "n_failed")))
-    sid <- "S5e"
+    sid <- "reference table e"
     title <- paste0(
-      "All adjusted associations with the per-participant outcomes (side effect severity rating, benefit ",
+      REF_PREFIX, "All adjusted associations with the per-participant outcomes (side effect severity rating, benefit ",
       "rating, number of best aspects, first improvement duration), with and without adjustment for survey cohort"
     )
     foot <- paste0(
-      "Sensitivity analysis by survey cohort. Left: the main adjusted per-participant ordinal models (adjusted for ",
+      REF_PREFIX, "sensitivity analysis by survey cohort. Left: the main adjusted per-participant ordinal models (adjusted for ",
       ADJUSTMENT_SETS[["legacy"]], "). Right: the same models with survey cohort (SA8 vs Baseline) added to the ",
       "covariates; the survey-cohort row of each outcome is from one model with the cohort as its focal predictor ",
       "and the same covariates. ", cohort_person_note, " ",
@@ -853,31 +864,33 @@ if (length(family_missing$cohort_legacy)) {
     header <- c("Parameter", "Adjusted OR [95% CI]", "p", "N", "Adjusted + survey cohort OR [95% CI]", "p", "N")
     body <- select(tab, Parameter, est_u, p_u, n_u, est_a, p_a, n_a)
     file <- "supp_cohort_legacy.html"
-    writeLines(html_table(header, body, foot, italic_rows = italic), file.path(out_dir, file))
+    writeLines(html_table(header, body, foot, italic_rows = italic), file.path(ref_dir, file))
     cohort_index <- c(
       cohort_index, "",
-      paste0("#### Supplementary Table ", sid, ": ", title),
-      paste0("`manuscript-tables/", file, "`, ", nrow(body), " rows. ", foot),
+      paste0("#### ", title),
+      paste0("`reference-tables/", file, "`, ", nrow(body), " rows. ", foot),
       md_table(header, body)
     )
-    message("  wrote survey-cohort table ", sid, " (", nrow(body), " rows)")
+    message("  wrote ", sid, " (", nrow(body), " rows)")
   }
 }
 
-md <- c(
-  md, "", "## Sensitivity analysis: survey cohort",
+ref_md <- c(
+  "# Reference-only tables (not in the manuscript)",
   "",
   paste0(
-    "`glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`: the adjusted longitudinal and ",
-    "per-participant models with survey cohort (SA8 vs Baseline) added to the covariates; workbooks ",
-    "`results/glmm_medications_cov_cohort.xlsx` and `results/medications_cov_cohort.xlsx`. Supplementary ",
-    "Tables S5a-S5e (numbering provisional)."
+    "Owner ruling 2026-11-12: the survey-cohort sensitivity analysis is kept for our own reference and is not ",
+    "part of the write-up. `glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`: the adjusted ",
+    "longitudinal and per-participant models with survey cohort (SA8 vs Baseline) added to the covariates; ",
+    "workbooks `results/glmm_medications_cov_cohort.xlsx` and `results/medications_cov_cohort.xlsx`. ",
+    "HTML files in `reference-tables/`."
   ),
   cohort_index
 )
+writeLines(ref_md, ref_md_path)
 
 # ------------------------------------------------------------------------------
-# Supplementary Table S6 (file supp_drug): within/between, adjusted for the drug
+# Supplementary Table S5 (file supp_drug): within/between, adjusted for the drug
 # ------------------------------------------------------------------------------
 # Sensitivity analysis (user approval 2026-11-11): the within- and
 # between-person terms of the four medication-level predictors for
@@ -887,11 +900,11 @@ md <- c(
 # fewer than 50 rows pooled; lib/12.drug_identity.r). Drugs that cause more
 # side effects tend to be rated as working better, which confounds the
 # within-person contrast; adjusting for the drug removes it. The two outcomes
-# are stacked with an italic heading row each, as in S5e. Bonferroni factor:
+# are stacked with an italic heading row each, as in S2b, S3b, S3c and S3e. Bonferroni factor:
 # the four longitudinal outcomes, although this set has two.
 drug_info <- attr(add_drug_identity(dat_long), "drug_identity")
 drug_index <- character()
-drug_sid <- "S6"
+drug_sid <- "S5"
 drug_title <- paste0(
   "Within-person and between-person associations with effectiveness and remission, adjusted and ",
   "additionally adjusted for the individual antidepressant"
@@ -972,16 +985,16 @@ md <- c(
     "`glmm_models_cov_drug`: the within/between sets of the four medication-level predictors for effectiveness ",
     "and remission, adjusted as the main models plus the individual antidepressant (",
     drug_info$reference, " reference, drugs with fewer than ", drug_info$min_rows, " rows pooled); workbook ",
-    "`results/glmm_medications_cov_drug.xlsx`. Supplementary Table S6 (numbering provisional)."
+    "`results/glmm_medications_cov_drug.xlsx`. Supplementary Table S5 (numbering provisional)."
   ),
   drug_index
 )
 
 # ------------------------------------------------------------------------------
-# Supplementary Table S7 (file supp_zero): blank checklists coded as zero
+# Supplementary Table S6 (file supp_zero): blank checklists coded as zero
 # ------------------------------------------------------------------------------
 # Sensitivity analysis (owner ruling 2026-11-12, which made the strict rule the
-# main rule; S7 showed the strict rule as the sensitivity analysis until then):
+# main rule; S6 showed the strict rule as the sensitivity analysis until then):
 # the eight adjusted within/between models the coding of blank side-effect
 # checklists can move, from the main adjusted models and from the same models
 # on the zero-rule frame (`glmm_models_cov_zero`; lib/13.zero_se.r). Under the
@@ -989,10 +1002,10 @@ md <- c(
 # only with the "No side effects" tick, and otherwise the number of side
 # effects and the stop status are missing; under the zero rule it is 0 side
 # effects and not stopped. The four outcomes are stacked with an italic heading
-# row each, as in S6. Bonferroni factor: the four longitudinal outcomes.
+# row each, as in S5. Bonferroni factor: the four longitudinal outcomes.
 zero_info <- zero_se_info(dat_long)
 zero_index <- character()
-zero_sid <- "S7"
+zero_sid <- "S6"
 zero_title <- "Within-person and between-person associations when blank side-effect checklists are coded as zero"
 if (length(family_missing$zero)) {
   zero_index <- c(zero_index, "", paste0("#### Supplementary Table ", zero_sid, ": ", zero_title),
@@ -1071,9 +1084,9 @@ md <- c(
   paste0(
     "`glmm_models_cov_zero`: the eight adjusted within/between models of effectiveness and remission on the ",
     "side-effect measures and of the side-effect outcomes on cumulative medication count and start age, on the ",
-    "frame with the blank checklists that the main rule leaves missing (", zero_se_recoded_text(zero_info),
+    "frame with the blank checklists that the main rule leaves missing (", zero_se_recoded_text(zero_info, by_cohort = FALSE),
     ") coded as 0 side effects and not stopped; workbook `results/glmm_medications_cov_zero.xlsx`. ",
-    "Supplementary Table S7 (numbering provisional; `supp_zero.html`, which replaces the strict-rule ",
+    "Supplementary Table S6 (numbering provisional; `supp_zero.html`, which replaces the strict-rule ",
     "`supp_strict.html` of 2026-11-11)."
   ),
   zero_index

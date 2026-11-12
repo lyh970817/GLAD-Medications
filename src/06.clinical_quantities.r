@@ -84,6 +84,9 @@ cohorts <- levels(droplevels(factor(dat_long$cohort)))
 cohort_key <- function(x) tolower(gsub("[^A-Za-z0-9]+", "_", x))
 fmt_pct <- function(x, digits = 1) formatC(100 * x, format = "f", digits = digits)
 
+# Owner ruling 2026-11-12: by-cohort values are reference only (not in the write-up).
+REF_SECTION <- "Reference only: survey cohort (not in the manuscript)"
+
 numbers <- list()
 add <- function(section, key, value, definition) {
   numbers[[length(numbers) + 1]] <<- tibble(
@@ -188,7 +191,7 @@ derived <- map_dfr(names(derived_specs), function(nm) {
 
 for (r in seq_len(nrow(derived))) {
   x <- derived[r, ]
-  add(CROSS_SECTION,
+  add(if (x$group == "Overall") CROSS_SECTION else REF_SECTION,
     paste0(x$quantity, "_", cohort_key(x$group)),
     paste0(fmt_pct(x$est), "% [", fmt_pct(x$lo), ", ", fmt_pct(x$hi), "] (", commafy(x$k), " of ", commafy(x$n), ")"),
     paste0(x$text, ", ", x$group, "; of medications with a known stop status, from ", commafy(x$n_id),
@@ -197,7 +200,7 @@ for (r in seq_len(nrow(derived))) {
 for (g in names(cross_blocks)) {
   cnt <- attr(cross_blocks[[g]], "counts")
   for (e in rownames(cnt)) for (s in colnames(cnt)) {
-    add(CROSS_SECTION,
+    add(if (g == "Overall") CROSS_SECTION else REF_SECTION,
       paste0("cross_", cohort_key(e), "_", cohort_key(s), "_", cohort_key(g)),
       fmt_n_pct(cnt[e, s], sum(cnt[e, ])),
       paste0("Medications (rows of `dat_long`), ", g, ": effectiveness ", e, ", ", s,
@@ -603,10 +606,13 @@ nmd <- c(
   paste0("Generated ", format(Sys.Date()), " by `src/06.clinical_quantities.r` from `dat_long` and the"),
   "longitudinal models (remission: cached fits; effectiveness: three refits in `cache/clinical_fits/`).",
   "A sidecar to `manuscript-numbers-current.md`",
-  "(`src/05.manuscript_numbers.r`); keys ending in a cohort name or `overall` give that group.",
+  "(`src/05.manuscript_numbers.r`); keys ending in `overall` give the whole sample, keys ending in a cohort",
+  "name are in the last section, reference only (not in the manuscript).",
   ""
 )
-for (s in unique(numbers$section)) {
+secs <- unique(numbers$section)
+secs <- c(setdiff(secs, REF_SECTION), intersect(secs, REF_SECTION))
+for (s in secs) {
   rows <- filter(numbers, section == s)
   nmd <- c(nmd, paste0("## ", s), "", md_table(c("Key", "Value", "Definition"), select(rows, key, value, definition)), "")
 }

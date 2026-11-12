@@ -1,6 +1,6 @@
 # Zero-rule coding of blank side-effect checklists, for the zero-rule
 # sensitivity set (`glmm_models_cov_zero` in src/02.regression.r, Supplementary
-# Table S7).
+# Table S6).
 #
 # Main rule (ruling A3 as ruled by the owner on 2026-11-12, which made the
 # strict blank-checklist rule the main rule): with Yes on the any-side-effects
@@ -95,7 +95,7 @@ apply_zero_se <- function(data, vars = WITHIN_BETWEEN_VARS, id = "ID") {
 # "3,273 rows (Baseline 2,428, SA8 845)": the recoded rows, for logs and the
 # markdown index. `by_cohort = FALSE` gives "3,273 rows" alone, for table
 # footnotes, which do not split the sample by survey cohort (ruling
-# 2026-11-11; only the survey-cohort tables S5a-S5e name the cohorts).
+# 2026-11-11; only the reference-only survey-cohort tables name the cohorts).
 zero_se_recoded_text <- function(info, by_cohort = TRUE) {
   by <- if (by_cohort) info$rows_recoded_by_cohort else NULL
   paste0(

@@ -28,23 +28,30 @@ dir.create(docs_dir, showWarnings = FALSE, recursive = TRUE)
 cohorts <- levels(droplevels(factor(dat$cohort)))
 cohort_key <- function(x) tolower(gsub("[^A-Za-z0-9]+", "_", x))
 
+# Owner ruling 2026-11-12: the survey-cohort sensitivity analysis and every
+# by-cohort value are for our own reference and are not in the write-up. They
+# are collected in one clearly labelled section, written last.
+REF_SECTION <- "Reference only: survey cohort (not in the manuscript)"
+
 numbers <- list()
 section <- "Unsorted"
-add <- function(key, value, definition) {
+add <- function(key, value, definition, sect = section) {
   numbers[[length(numbers) + 1]] <<- tibble(
-    section = section, key = key, value = as.character(value), definition = definition
+    section = sect, key = key, value = as.character(value), definition = definition
   )
 }
 
 # Adds one key per cohort and one overall, each from `f(rows)`, where `rows`
-# selects that group's rows of `d`.
+# selects that group's rows of `d`. The overall key stays in the current
+# section; the per-cohort keys go to the reference-only section.
 add_by_cohort <- function(key, d, f, definition) {
   groups <- c(
     setNames(lapply(cohorts, function(cc) which(d$cohort == cc)), cohort_key(cohorts)),
     overall = list(seq_len(nrow(d)))
   )
   for (g in names(groups)) {
-    add(paste0(key, "_", g), f(groups[[g]]), definition)
+    add(paste0(key, "_", g), f(groups[[g]]), definition,
+      sect = if (g == "overall") section else REF_SECTION)
   }
 }
 
@@ -234,7 +241,7 @@ add_by_cohort("medication_observations_dat_long", dat_long, function(i) commafy(
 add_by_cohort("female_pct", dat, function(i) pct_of(sum(dat$sex[i] == "Female", na.rm = TRUE), sum(!is.na(dat$sex[i]))),
   "Female participants in `dat` (of participants with a known sex), as in Table 1")
 add("cohort_overlap",commafy(length(intersect(dat$ID[dat$cohort == cohorts[1]], dat$ID[dat$cohort != cohorts[1]]))),
-  "Participants in more than one cohort (the munge stops if this is not 0)")
+  "Participants in more than one cohort (the munge stops if this is not 0)", sect = REF_SECTION)
 
 # ------------------------------------------------------------------------------
 section <- "Antidepressants per participant"
@@ -730,7 +737,7 @@ if (all(objects_present("glmm_models_cov_class"))) {
 }
 
 # ------------------------------------------------------------------------------
-section <- "Survey-cohort sensitivity analysis"
+section <- REF_SECTION
 # ------------------------------------------------------------------------------
 # The adjusted models with the survey cohort (SA8 vs Baseline) added to the
 # covariates (user ruling 2026-11-09): `glmm_models_cov_cohort` on the full
@@ -988,11 +995,15 @@ md <- c(
   paste0("Generated ", format(Sys.Date()), " by `src/05.manuscript_numbers.r` from `dat`,"),
   "`dat_long`, the ilovedata extracts and, where present, the cached model objects.",
   "Every value is computed; none is typed in. Shares are of rows or participants",
-  "with a known value unless the definition says otherwise. Keys ending in a cohort",
-  paste0("name (", paste0("`", cohort_key(cohorts), "`", collapse = ", "), ") or `overall` give that group."),
+  "with a known value unless the definition says otherwise. Keys ending in `overall`",
+  paste0("give the whole sample; keys ending in a cohort name (",
+    paste0("`", cohort_key(cohorts), "`", collapse = ", "), ") and the `cohort_*` keys are in the last"),
+  "section, reference only (not in the manuscript).",
   ""
 )
-for (s in unique(numbers$section)) {
+secs <- unique(numbers$section)
+secs <- c(setdiff(secs, REF_SECTION), intersect(secs, REF_SECTION))
+for (s in secs) {
   rows <- filter(numbers, section == s)
   md <- c(md, paste0("## ", s), "", md_table(c("Key", "Value", "Definition"), select(rows, key, value, definition)), "")
 }
