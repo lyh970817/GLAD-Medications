@@ -64,7 +64,8 @@ reload.project()
 # Only the main adjusted and unadjusted sets are used; the sensitivity sets are
 # large and not needed here.
 rm(list = intersect(
-  c("glmm_models_cov_famhist", "glmm_models_cov_class", "glmm_models_cov_cohort"),
+  c("glmm_models_cov_famhist", "glmm_models_cov_class", "glmm_models_cov_cohort", "glmm_models_cov_zero",
+    "glmm_models_cov_strict"),
   ls(globalenv())
 ), envir = globalenv())
 invisible(gc())
@@ -245,7 +246,7 @@ SET_LABELS <- c(
 term_labels <- c(labels, within_between_labels(WITHIN_BETWEEN_VARS, labels))
 
 if (!all(objects_present("glmm_models_cov"))) {
-  stop("Table 5 needs `glmm_models_cov` from src/02.regression.r in cache/")
+  stop("Table 5 needs `glmm_models_cov` from src/02.regression.r in cache/, fitted on the current `dat_long`")
 }
 
 # ------------------------------------------------------------------------------
@@ -254,7 +255,7 @@ if (!all(objects_present("glmm_models_cov"))) {
 # The adjusted fit where it can be recovered, else the unadjusted one.
 locate_frame <- function(outcome, terms) {
   for (obj in c("glmm_models_cov", "glmm_models")) {
-    if (!exists(obj, envir = globalenv())) next
+    if (!objects_present(obj)) next
     s <- find_set_by_terms(get(obj, envir = globalenv())[[outcome]], terms)
     fr <- cached_fit_frame(s)
     if (!is.null(fr)) {

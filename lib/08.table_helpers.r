@@ -119,7 +119,12 @@ md_table <- function(header, body) {
 }
 
 # TRUE for each named object that exists in the global environment, where
-# reload.project() puts the cached model objects.
+# reload.project() puts the cached model objects, and, for a model family,
+# was assembled by src/02.regression.r from the current analysis frame
+# (model_object_status(), lib/14.model_cache.r). A family cached before the
+# stamps existed, or fitted on other data, counts as absent and is reported.
 objects_present <- function(names) {
-  vapply(names, exists, logical(1), envir = globalenv(), inherits = FALSE)
+  status <- model_object_status(names)
+  report_unusable_models(status)
+  status == "current"
 }

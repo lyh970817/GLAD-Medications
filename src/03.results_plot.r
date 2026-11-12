@@ -5,6 +5,14 @@ library(gtable)
 library(grid)
 reload.project()
 
+# The cached model objects must have been assembled by src/02.regression.r from
+# the current frames (stamp check, lib/14.model_cache.r); a family cached
+# before the stamps existed, or fitted on other data, stops the script.
+stop_unless_current(c(
+  "sef_models", "eff_models", "sef_models_compete", "eff_models_compete",
+  "glmm_models", "glmm_models_cov"
+))
+
 # The legacy non-longitudinal models use their own names for the side-effect
 # predictors; these labels are defined in src/02.regression.r and are not part
 # of the cached `labels` object.

@@ -253,56 +253,66 @@ gate <- person %>%
 med_long <- taken %>%
   left_join(gate, by = "person_id") %>%
   dplyr::mutate(
-    # Number of side effects (ruling A2; A3 as amended 2026-11-06, matching
-    # GLAD-Medications-SEM). Count the ticked boxes. With none ticked:
+    # Number of side effects (rulings A2 and A3; A3 as ruled by the owner on
+    # 2026-11-12, which makes the strict blank-checklist rule the main rule
+    # and reverses the 2026-11-06 amendment). Count the ticked boxes. With
+    # none ticked:
     #   - No to having had side effects from any medication: 0 (the checklist
     #     is not shown after No, so it is blank there).
-    #   - Yes, and the drug's checklist page was displayed and recorded: 0,
-    #     whether or not its "No side effects" box is ticked. Displayed and
-    #     recorded means the drug's checklist cells hold stored raw values
+    #   - Yes, the drug's checklist page displayed and recorded, and its "No
+    #     side effects" box ticked: 0.
+    #   - Yes, the drug's checklist page displayed and recorded, nothing
+    #     ticked and the "No side effects" box not ticked: missing. Nothing
+    #     confirms that the drug had no side effects; the checklist may have
+    #     been skipped (the 2026-11-11 audit's categories "c mixed" and "c77
+    #     stored -77", logs/adhoc-se-zero-2026-11-11/). Displayed and recorded
+    #     means the drug's checklist cells hold stored raw values
     #     (`se_recorded` > 0: Qualtrics' 0 for an unticked box, or its -77 for
     #     shown-but-blank). The sentinel codes cannot show this, since the
     #     engine codes -77 and an empty cell alike as -777.
     #   - Otherwise (the drug's cells are empty: page never reached or not
-    #     recorded), missing.
-    # The "No side effects" tick does not enter the count. A strict coding of
-    # the blank checklists is a supplementary sensitivity analysis only
-    # (`n_se_strict` below).
+    #     recorded; or the gate unanswered), missing.
+    # The "No side effects" tick is not a side effect and never adds to the
+    # count. The previous main rule (A3 as amended 2026-11-06: a recorded
+    # checklist with nothing ticked is 0 whether or not the "No side effects"
+    # box is ticked) is kept as `n_se_zero`, for the zero-rule sensitivity set
+    # only (lib/13.zero_se.r, `glmm_models_cov_zero`). The main count is the
+    # zero-rule count with the unconfirmed blank checklists
+    # (`se_blank_unconfirmed`) set to missing, so the two differ on those rows
+    # only (checked below).
     n_se_ticked = rowSums(across(all_of(se_items), is_tick)),
-    n_se = case_when(
+    n_se_zero = case_when(
       n_se_ticked > 0 ~ n_se_ticked,
       !is.na(gate) & gate == 0 ~ 0,
       !is.na(gate) & gate == 1 & se_recorded > 0 ~ 0,
       TRUE ~ NA_real_
     ),
+    se_blank_unconfirmed = !is.na(gate) & gate == 1 & se_recorded > 0 & n_se_ticked == 0 & !is_tick(nse),
+    n_se = ifelse(se_blank_unconfirmed, NA_real_, n_se_zero),
     # Stopped because of side effects, 0 No / 1 Yes (ruling 2026-11-07). The
     # item is shown for a drug only when a side effect was ticked for it
     # (ruling stop_display), so it follows n_se:
-    #   - n_se is 0, for whatever reason (gate No; the "No side effects" box
-    #     ticked; a recorded checklist with nothing ticked): 0. A drug with no
-    #     side effects was not stopped because of them. This does not look at
-    #     the stop item's own status.
-    #   - n_se is missing: missing.
+    #   - n_se is 0 (gate No, or the "No side effects" box ticked): 0. A drug
+    #     with no side effects was not stopped because of them. This does not
+    #     look at the stop item's own status.
+    #   - n_se is missing (a blank checklist without the "No side effects"
+    #     tick included): missing.
     #   - n_se is above 0: the answer where the item was answered; missing when
     #     it was seen and not answered.
+    # `stopped_due_to_se_zero` applies the same rule to `n_se_zero`, so it is
+    # 0 on the blank checklists as well.
     stopped_due_to_se = case_when(
       is.na(n_se) ~ NA_real_,
       n_se == 0 ~ 0,
       answered(stopped) ~ stopped,
       TRUE ~ NA_real_
     ),
-    # Strict blank-checklist sensitivity coding (ruling `a3_strict_sens`,
-    # 2026-11-11; supplementary only, the rule above stays primary as amended
-    # by the owner on 2026-11-06). A row with Yes on the any-side-effects
-    # question whose checklist page was displayed and recorded
-    # (`se_recorded` > 0) but has nothing ticked and no "No side effects" tick
-    # is not confirmed as 0 side effects: under the strict rule its number of
-    # side effects is missing, and so is its stop status (which follows n_se).
-    # Every other row keeps its main value. Used only by the strict
-    # sensitivity set (lib/13.strict_se.r, `glmm_models_cov_strict`).
-    se_blank_unconfirmed = !is.na(gate) & gate == 1 & se_recorded > 0 & n_se_ticked == 0 & !is_tick(nse),
-    n_se_strict = ifelse(se_blank_unconfirmed, NA_real_, n_se),
-    stopped_due_to_se_strict = ifelse(is.na(n_se_strict), NA_real_, stopped_due_to_se),
+    stopped_due_to_se_zero = case_when(
+      is.na(n_se_zero) ~ NA_real_,
+      n_se_zero == 0 ~ 0,
+      answered(stopped) ~ stopped,
+      TRUE ~ NA_real_
+    ),
     # How well the drug worked: 0 not at all, 1 moderately, 2 very well.
     # "Don't know" is missing.
     effectiveness = answer_value(eff),
@@ -338,22 +348,40 @@ med_long <- taken %>%
     length_taken = answer_value(length)
   ) %>%
   select(
-    person_id, medication = drug, gate, n_se, stopped_due_to_se, n_se_strict, stopped_due_to_se_strict,
-    effectiveness, further_symptoms, improvement_duration, remission, start_age_raw, length_taken
+    person_id, medication = drug, gate, n_se, stopped_due_to_se, n_se_zero, stopped_due_to_se_zero,
+    se_blank_unconfirmed, effectiveness, further_symptoms, improvement_duration, remission,
+    start_age_raw, length_taken
   )
 
-# The strict coding differs from the main one only on the unconfirmed blank
-# checklists, all of which are 0 under the main rule.
+# The zero rule differs from the main (strict) rule only on the unconfirmed
+# blank checklists (category c: gate Yes, checklist recorded, nothing ticked,
+# no "No side effects" tick): missing under the main rule, 0 and not stopped
+# under the zero rule. Every other row has the same value under both. The
+# counts are of taken-drug rows before the scope filter (depressive or anxiety
+# disorder) below; src/05.manuscript_numbers.r reports them on `dat_long`.
 local({
-  d <- !is.na(med_long$n_se) & is.na(med_long$n_se_strict)
+  c_rows <- med_long$se_blank_unconfirmed
   stopifnot(
-    all(med_long$n_se[d] == 0), all(med_long$stopped_due_to_se[d] == 0),
-    identical(is.na(med_long$n_se) | d, is.na(med_long$n_se_strict)),
-    all(med_long$n_se_strict == med_long$n_se, na.rm = TRUE),
-    all(med_long$stopped_due_to_se_strict == med_long$stopped_due_to_se, na.rm = TRUE),
-    identical(is.na(med_long$stopped_due_to_se_strict), is.na(med_long$stopped_due_to_se) | d)
+    !anyNA(c_rows),
+    all(is.na(med_long$n_se[c_rows])), all(is.na(med_long$stopped_due_to_se[c_rows])),
+    all(med_long$n_se_zero[c_rows] == 0), all(med_long$stopped_due_to_se_zero[c_rows] == 0),
+    identical(med_long$n_se[!c_rows], med_long$n_se_zero[!c_rows]),
+    identical(med_long$stopped_due_to_se[!c_rows], med_long$stopped_due_to_se_zero[!c_rows])
+  )
+  ids <- med_long$person_id
+  known_main <- tapply(!is.na(med_long$n_se), ids, any)
+  known_zero <- tapply(!is.na(med_long$n_se_zero), ids, any)
+  big <- function(x) format(x, big.mark = ",")
+  message(
+    "n_se main rule (strict, owner ruling 2026-11-12): ", big(sum(c_rows)), " blank checklists without a ",
+    "\"No side effects\" tick (gate Yes, page recorded, nothing ticked) are missing, 0 under the zero rule, ",
+    "from ", big(length(unique(ids[c_rows]))), " participants; ", big(sum(known_zero & !known_main)),
+    " participants have no known number of side effects under the main rule but one under the zero rule; ",
+    "known n_se ", big(sum(!is.na(med_long$n_se))), " (zero rule ", big(sum(!is.na(med_long$n_se_zero))),
+    ") of ", big(nrow(med_long)), " taken-drug rows, before the scope filter."
   )
 })
+med_long <- select(med_long, -se_blank_unconfirmed)
 
 # Start age & cumulative medication count. Start age orders a participant's
 # medications. Ages outside 5-100 are invalid; a taken medication without a
@@ -405,11 +433,15 @@ med_person <- tibble(person_id = takers) %>%
       dplyr::summarise(
         n_meds = n(),
         # Mean number of side effects over the drugs whose count is known; a
-        # missing count is left out of the mean (ruling A2).
+        # missing count is left out of the mean (ruling A2). Under the main
+        # rule (owner ruling 2026-11-12) that includes a blank checklist
+        # without a "No side effects" tick.
         mean_n_se = if (any(!is.na(n_se))) mean(n_se, na.rm = TRUE) else NA_real_,
         # Proportion of the participant's antidepressants stopped because of
         # side effects, among the drugs whose stop status is known (answered,
-        # or 0 because n_se is 0) (user ruling 2026-11-09, afternoon): the
+        # or 0 because n_se is 0; a blank checklist without a "No side
+        # effects" tick has an unknown status under the main rule, owner
+        # ruling 2026-11-12) (user ruling 2026-11-09, afternoon): the
         # numerator is the drugs stopped because of side effects, the
         # denominator the drugs with a known status, so a drug whose status is
         # unknown is in neither. It used to count every taken drug in the
@@ -600,7 +632,9 @@ dat_long <- med_long %>%
   select(
     person_id, medication, start_age, cumulative_med_count,
     effectiveness, n_se, remission, stopped_due_to_se,
-    n_se_strict, stopped_due_to_se_strict
+    # Zero-rule values, for the zero-rule sensitivity set only
+    # (lib/13.zero_se.r); nothing else reads them.
+    n_se_zero, stopped_due_to_se_zero
   ) %>%
   inner_join(static_dat, by = "person_id") %>%
   dplyr::mutate(

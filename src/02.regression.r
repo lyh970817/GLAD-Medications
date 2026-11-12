@@ -12,23 +12,60 @@ reload.project()
 # processes have room. This only clears the session; the cache files stay put.
 rm(list = intersect(
   c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
-    "glmm_models_cov_cohort", "glmm_models_cov_drug", "glmm_models_cov_strict", "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
+    "glmm_models_cov_cohort", "glmm_models_cov_drug", "glmm_models_cov_zero",
+    # The strict-rule sensitivity family of 2026-11-11 (strict is the main rule
+    # since 2026-11-12); nothing writes it any more.
+    "glmm_models_cov_strict",
+    "cor_plot", "plot_eff", "plot_sef", "plot_list_eff", "plot_list_sef"),
   ls(globalenv())
 ), envir = globalenv())
 invisible(gc())
 
-# Fitting the full model set takes >2h. reload.project() restores previously
-# fitted objects from cache/, so reuse them unless FORCE_REFIT=TRUE. `code` is
-# only evaluated when there is no cached object to return.
+# reload.project() restores previously fitted objects from cache/ by name.
+# fit_or_cached() reuses a cached per-participant family only when it was
+# fitted on the same inputs: a digest of the outcomes, predictor sets,
+# covariates, a recipe version and the frame's columns that the fits read
+# (fit_prop() and fit_hurdle() use only the outcome and the fixed columns),
+# stored on the object as attribute `input_digest`. A cached object without
+# that attribute (cached before 2026-11-12) or with a different one is
+# refitted, so a change to the data a family reads (for example `mean_n_se`
+# and `intolerance` under the 2026-11-12 side-effect coding) can no longer be
+# served from a stale object, while a family whose columns did not change is
+# reused. FORCE_REFIT=TRUE refits regardless. Bump LEGACY_RECIPE_VERSION when
+# fit_prop() / fit_hurdle() / format_model() change in a way that alters
+# estimates. (The GLMM sets have their own per-set cache, set_cache_path()
+# below.)
 force_refit <- isTRUE(as.logical(Sys.getenv("FORCE_REFIT", "FALSE")))
+LEGACY_RECIPE_VERSION <- "2026-11-12"
 
-fit_or_cached <- function(name, code) {
+legacy_input_digest <- function(deps, indeps_list, covs, data) {
+  cols <- unique(c(deps, unlist(indeps_list), covs))
+  digest::digest(list(
+    version = LEGACY_RECIPE_VERSION,
+    deps = deps,
+    indeps_list = indeps_list,
+    covs = covs,
+    data = digest::digest(as.data.frame(data)[cols])
+  ))
+}
+
+# Fits fit_all_non_glmm(deps, indeps_list, covs, data) unless the cached
+# object `name` was fitted on the same inputs.
+fit_or_cached <- function(name, deps, indeps_list, covs = NULL, data) {
+  key <- legacy_input_digest(deps, indeps_list, covs, data)
   if (!force_refit && exists(name, envir = globalenv())) {
-    message("  Reusing cached model object: ", name)
-    return(get(name, envir = globalenv()))
+    cached_key <- attr(get(name, envir = globalenv()), "input_digest")
+    if (identical(cached_key, key)) {
+      message("  Reusing cached model object: ", name)
+      return(get(name, envir = globalenv()))
+    }
+    message("  Cached ", name, if (is.null(cached_key)) " has no input digest" else " was fitted on other inputs",
+      "; refitting")
   }
   message("  Fitting: ", name)
-  code
+  m <- fit_all_non_glmm(deps, indeps_list, covs = covs, data = data)
+  attr(m, "input_digest") <- key
+  m
 }
 
 # Ensure labels cover both longitudinal GLMM and legacy non-longitudinal outputs
@@ -540,42 +577,46 @@ glmm_models_cov_drug <- fit_family(
   covs = c(compete_indeps, "phq9", DRUG_IDENTITY_COLUMN), data = dat_long_drug
 )
 
-# 7. Sensitivity: strict coding of blank side-effect checklists (ruling
-# `a3_strict_sens`, 2026-11-11; supplementary only). Under the main rule (A3 as
-# amended 2026-11-06, unchanged) a drug with Yes on the any-side-effects
-# question whose checklist page was recorded with nothing ticked has 0 side
-# effects and was not stopped because of them; under the strict rule such a row
-# counts as 0 only when its "No side effects" box is ticked, otherwise both are
-# missing (`n_se_strict`, `stopped_due_to_se_strict` from the munge;
-# lib/13.strict_se.r). Same rows as the main frame; the within/between terms
-# are recomputed from the strict values. The eight adjusted decomposed models
-# the strict rule can move: effectiveness and remission on the number of side
-# effects and on stopping because of side effects, and the number of side
-# effects and stopping on the cumulative medication count and on start age, each
-# adjusted exactly as in (2), including covs_for_set(). Bonferroni x4. The
-# per-set cache (cache/glmm_fits/) is the reuse gate, as for every GLMM set;
-# FORCE_REFIT=TRUE refits it.
-dat_long_strict <- apply_strict_se(dat_long_glmm, WITHIN_BETWEEN_VARS)
-strict_se_info <- attr(dat_long_strict, "strict_se")
+# 7. Sensitivity: blank side-effect checklists coded as zero (owner ruling
+# 2026-11-12, which made the strict rule the main rule; this set replaces the
+# strict-rule set of 2026-11-11). Under the main rule a drug with Yes on the
+# any-side-effects question whose checklist page was recorded with nothing
+# ticked counts as 0 side effects only when its "No side effects" box is
+# ticked; otherwise its number of side effects and stop status are missing.
+# Under the zero rule (the main rule from the 2026-11-06 amendment of A3 until
+# 2026-11-12) such a row is 0 side effects and not stopped because of them
+# (`n_se_zero`, `stopped_due_to_se_zero` from the munge; lib/13.zero_se.r).
+# Same rows as the main frame; the within/between terms are recomputed from
+# the zero-rule values. The eight adjusted decomposed models the coding can
+# move: effectiveness and remission on the number of side effects and on
+# stopping because of side effects, and the number of side effects and stopping
+# on the cumulative medication count and on start age, each adjusted exactly as
+# in (2), including covs_for_set(). Bonferroni x4. The per-set cache
+# (cache/glmm_fits/) is the reuse gate, as for every GLMM set: these model
+# frames equal those of the same sets of (2) under the previous main rule, so
+# the fits made for that are reused. FORCE_REFIT=TRUE refits it.
+dat_long_zero <- apply_zero_se(dat_long_glmm, WITHIN_BETWEEN_VARS)
+zero_se_info_main <- zero_se_info(dat_long_glmm)
 message(
-  "  Strict blank-checklist frame: ", strict_se_info$rows, " rows; ", strict_se_recoded_text(strict_se_info),
-  " of ", strict_se_info$participants_recoded, " participants recoded to missing; ",
-  strict_se_info$participants_lose_all_n_se, " participants left with no known number of side effects; ",
-  "known n_se ", strict_se_info$n_se_known_main, " -> ", strict_se_info$n_se_known_strict,
-  ", known stop status ", strict_se_info$stopped_known_main, " -> ", strict_se_info$stopped_known_strict
+  "  Zero-rule frame: ", zero_se_info_main$rows, " rows; ", zero_se_recoded_text(zero_se_info_main),
+  " of ", zero_se_info_main$participants_recoded, " participants missing under the main rule and 0 here; ",
+  zero_se_info_main$participants_no_known_n_se_main,
+  " participants with no known number of side effects under the main rule have one here; ",
+  "known n_se ", zero_se_info_main$n_se_known_main, " -> ", zero_se_info_main$n_se_known_zero,
+  ", known stop status ", zero_se_info_main$stopped_known_main, " -> ", zero_se_info_main$stopped_known_zero
 )
 
-strict_focal_vars <- list(
+zero_focal_vars <- list(
   effectiveness = c("n_se", "stopped_due_to_se"),
   remission = c("n_se", "stopped_due_to_se"),
   n_se = c("cumulative_med_count", "start_age"),
   stopped_due_to_se = c("cumulative_med_count", "start_age")
 )
 
-glmm_models_cov_strict <- fit_family(
-  names(strict_focal_vars),
-  function(dep) decompose_indeps_list(as.list(strict_focal_vars[[dep]]), WITHIN_BETWEEN_VARS),
-  covs = c(compete_indeps, "phq9"), data = dat_long_strict
+glmm_models_cov_zero <- fit_family(
+  names(zero_focal_vars),
+  function(dep) decompose_indeps_list(as.list(zero_focal_vars[[dep]]), WITHIN_BETWEEN_VARS),
+  covs = c(compete_indeps, "phq9"), data = dat_long_zero
 )
 
 # Convergence report. fit_glmm() now records the fit warnings on each result, so
@@ -636,18 +677,24 @@ glmm_convergence <- c(
   report_convergence(glmm_models_cov_class, "drug-class sensitivity"),
   report_convergence(glmm_models_cov_cohort, "cohort sensitivity"),
   report_convergence(glmm_models_cov_drug, "drug-identity sensitivity"),
-  report_convergence(glmm_models_cov_strict, "strict blank-checklist sensitivity")
+  report_convergence(glmm_models_cov_zero, "zero-rule blank-checklist sensitivity")
 )
 
 # Save Results
 # ------------------------------------------------------------------------------
+# Each family is stamped with the digest of `dat_long` (lib/14.model_cache.r),
+# which src/03-06 check before using it.
+for (nm in c("glmm_models", "glmm_models_cov", "glmm_models_cov_famhist", "glmm_models_cov_class",
+             "glmm_models_cov_cohort", "glmm_models_cov_drug", "glmm_models_cov_zero")) {
+  assign(nm, stamp_source_frame(get(nm), "dat_long"))
+}
 cache("glmm_models")
 cache("glmm_models_cov")
 cache("glmm_models_cov_famhist")
 cache("glmm_models_cov_class")
 cache("glmm_models_cov_cohort")
 cache("glmm_models_cov_drug")
-cache("glmm_models_cov_strict")
+cache("glmm_models_cov_zero")
 
 write_xlsx_tab(bind_models(multi_adjust(glmm_models)),
   file = "./results/glmm_medications.xlsx", overwrite = TRUE
@@ -697,13 +744,13 @@ write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_drug, n_deps = 
   file = "./results/glmm_medications_sig_cov_drug.xlsx", overwrite = TRUE
 )
 
-# Sensitivity analysis: strict coding of blank side-effect checklists. All four
+# Sensitivity analysis: blank side-effect checklists coded as zero. All four
 # longitudinal outcomes, Bonferroni x4 (given explicitly, as for the drug set).
-write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_strict, n_deps = length(glmm_deps))),
-  file = "./results/glmm_medications_cov_strict.xlsx", overwrite = TRUE
+write_xlsx_tab(bind_models(multi_adjust(glmm_models_cov_zero, n_deps = length(glmm_deps))),
+  file = "./results/glmm_medications_cov_zero.xlsx", overwrite = TRUE
 )
-write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_strict, n_deps = length(glmm_deps)))),
-  file = "./results/glmm_medications_sig_cov_strict.xlsx", overwrite = TRUE
+write_xlsx_tab(bind_models(only_sig(multi_adjust(glmm_models_cov_zero, n_deps = length(glmm_deps)))),
+  file = "./results/glmm_medications_sig_cov_zero.xlsx", overwrite = TRUE
 )
 
 # ------------------------------------------------------------------------------
@@ -815,51 +862,50 @@ dat_nonlong_eff <- dat %>%
   select(-ID) %>%
   dplyr::mutate(across(-all_of(nonlong_eff_deps), as.numeric))
 
-sef_models <- fit_or_cached("sef_models", {
-  fit_all_non_glmm(nonlong_sef_deps, nonlong_indeps_sef, data = dat_nonlong_sef)
-})
-eff_models <- fit_or_cached("eff_models", {
-  fit_all_non_glmm(nonlong_eff_deps, nonlong_indeps_eff, data = dat_nonlong_eff)
-})
+sef_models <- fit_or_cached("sef_models", nonlong_sef_deps, nonlong_indeps_sef, data = dat_nonlong_sef)
+eff_models <- fit_or_cached("eff_models", nonlong_eff_deps, nonlong_indeps_eff, data = dat_nonlong_eff)
 
-sef_models_compete <- fit_or_cached("sef_models_compete", {
-  fit_all_non_glmm(
-    nonlong_sef_deps,
-    get_adjusted_nonlong_indeps(nonlong_indeps_sef),
-    covs = nonlong_compete_indeps,
-    data = dat_nonlong_sef
-  )
-})
+sef_models_compete <- fit_or_cached(
+  "sef_models_compete",
+  nonlong_sef_deps,
+  get_adjusted_nonlong_indeps(nonlong_indeps_sef),
+  covs = nonlong_compete_indeps,
+  data = dat_nonlong_sef
+)
 
-eff_models_compete <- fit_or_cached("eff_models_compete", {
-  fit_all_non_glmm(
-    nonlong_eff_deps,
-    get_adjusted_nonlong_indeps(nonlong_indeps_eff),
-    covs = nonlong_compete_indeps,
-    data = dat_nonlong_eff
-  )
-})
+eff_models_compete <- fit_or_cached(
+  "eff_models_compete",
+  nonlong_eff_deps,
+  get_adjusted_nonlong_indeps(nonlong_indeps_eff),
+  covs = nonlong_compete_indeps,
+  data = dat_nonlong_eff
+)
 
 # Sensitivity: survey cohort (user ruling 2026-11-09). The adjusted sets above
 # with `cohort` (SA8 vs Baseline) added to the covariates, plus one set per
 # outcome with the cohort as its focal predictor. Minutes to fit.
-sef_models_cohort <- fit_or_cached("sef_models_cohort", {
-  fit_all_non_glmm(
-    nonlong_sef_deps,
-    c(get_adjusted_nonlong_indeps(nonlong_indeps_sef), list(cohort_covariate)),
-    covs = c(nonlong_compete_indeps, cohort_covariate),
-    data = dat_nonlong_sef
-  )
-})
+sef_models_cohort <- fit_or_cached(
+  "sef_models_cohort",
+  nonlong_sef_deps,
+  c(get_adjusted_nonlong_indeps(nonlong_indeps_sef), list(cohort_covariate)),
+  covs = c(nonlong_compete_indeps, cohort_covariate),
+  data = dat_nonlong_sef
+)
 
-eff_models_cohort <- fit_or_cached("eff_models_cohort", {
-  fit_all_non_glmm(
-    nonlong_eff_deps,
-    c(get_adjusted_nonlong_indeps(nonlong_indeps_eff), list(cohort_covariate)),
-    covs = c(nonlong_compete_indeps, cohort_covariate),
-    data = dat_nonlong_eff
-  )
-})
+eff_models_cohort <- fit_or_cached(
+  "eff_models_cohort",
+  nonlong_eff_deps,
+  c(get_adjusted_nonlong_indeps(nonlong_indeps_eff), list(cohort_covariate)),
+  covs = c(nonlong_compete_indeps, cohort_covariate),
+  data = dat_nonlong_eff
+)
+
+# Stamped with the digest of `dat` (lib/14.model_cache.r), which src/03-06
+# check before using them.
+for (nm in c("sef_models", "sef_models_compete", "eff_models", "eff_models_compete",
+             "sef_models_cohort", "eff_models_cohort")) {
+  assign(nm, stamp_source_frame(get(nm), "dat"))
+}
 
 cache("sef_models")
 cache("sef_models_compete")
