@@ -102,23 +102,35 @@ sensitivity set").
 - `remission` is now remission (1 = worked moderately/very well and no further
   symptoms; 0 = further symptoms, or did not work at all), not the raw
   "further symptoms" item.
-- `n_se` (ruling A2, A3 as amended 2026-11-06): the number ticked; 0 for a No
-  on the any-side-effects question (the checklist is not shown after No); 0 for
+- `n_se` (rulings A2 and A3; **strict rule, owner ruling 2026-11-12**, which
+  reverses the 2026-11-06 amendment of A3): the number ticked; 0 for a No on
+  the any-side-effects question (the checklist is not shown after No); 0 for
   Yes when the drug's checklist page was displayed and recorded with nothing
-  ticked, with or without the "No side effects" tick; missing when the drug's
-  checklist cells are empty (page never reached or not recorded). "Displayed
-  and recorded" is `se_recorded > 0`: the export counts the drug's checklist
-  cells holding a raw value (Qualtrics' 0 or -77), because the sentinel coding
-  gives -77 and an empty cell the same -777. `mean_n_se` averages over known
-  counts only.
+  ticked **and its "No side effects" box ticked**; **missing** for Yes when the
+  page was displayed and recorded with nothing ticked and the "No side effects"
+  box not ticked (the 2026-11-11 audit's categories "c mixed" and "c77 stored
+  -77"); missing when the drug's checklist cells are empty (page never reached
+  or not recorded). "Displayed and recorded" is `se_recorded > 0`: the export
+  counts the drug's checklist cells holding a raw value (Qualtrics' 0 or -77),
+  because the sentinel coding gives -77 and an empty cell the same -777.
+  `mean_n_se` averages over known counts only. On snapshot2 the strict rule
+  leaves 3,273 `dat_long` rows (Baseline 2,428, SA8 845) of 1,675 participants
+  missing that were 0 under the zero rule; known `n_se` rows 28,920 (zero rule
+  32,193); 62 participants have no known count (they stay in both frames:
+  entry depends on the drug ticks and the diagnosis scope only).
+- `n_se_zero`, `stopped_due_to_se_zero` (since 2026-11-12): the same two
+  variables under the **zero rule** (A3 as amended 2026-11-06, the main rule
+  until 2026-11-12), which codes those blank checklists as 0 and not stopped.
+  The munge stops if they differ from `n_se` / `stopped_due_to_se` anywhere but
+  on those rows. They are read only by the zero-rule sensitivity set
+  (`lib/13.zero_se.r`); `dat` has no zero-rule columns.
 - `stopped_due_to_se` (ruling 2026-11-07) follows `n_se`, because the stop
   item is shown only when a side effect was ticked: 0 for every row whose
-  `n_se` is 0, whatever the reason (gate No, the "No side effects" tick, a
-  recorded checklist with nothing ticked), without looking at the stop item's
-  own status; missing where `n_se` is missing; otherwise the answer, and
-  missing when the item was seen and not answered. This matches the old values
-  for gate No and the "No side effects" tick; it is now also 0 for a recorded
-  checklist with nothing ticked.
+  `n_se` is 0 (gate No, or the "No side effects" tick), without looking at the
+  stop item's own status; missing where `n_se` is missing (so also on a blank
+  checklist without the "No side effects" tick); otherwise the answer, and
+  missing when the item was seen and not answered. Known on 27,436 `dat_long`
+  rows (zero rule 30,709).
 - `intolerance` (rulings 2026-11-09) enters the models as the raw proportion
   of the participant's antidepressants stopped because of side effects,
   multiplied by 10, so its odds ratio is per extra 10% of antidepressants
@@ -127,7 +139,10 @@ sensitivity set").
   `stopped_due_to_se` is known** (not missing), not every taken drug as
   before, so a drug with an unknown status is in neither. It is missing when
   no drug has a known status. Label: "Treatment discontinuation (per 10% of
-  antidepressants stopped)".
+  antidepressants stopped)". `mean_n_se` and `intolerance` follow the main
+  (strict) coding; on snapshot2 `mean_n_se` is known for 10,712 of 11,104
+  participants (zero rule 10,774; mean 3.61 vs 3.36) and `intolerance` for
+  10,689 (zero rule 10,763; mean 29.2% vs 26.2% of known-status drugs).
 - `comorbidity_total_count_numeric` is, under ruling `comorb_groups`, an exact
   linear combination of the ten diagnosis dummies (dep/anx + bipolar/psychotic
   + ED + OCD + PD + ADHD + ASD). Both pipelines therefore fit it in its own
@@ -180,9 +195,10 @@ the first `load.project()` on the new data:
 2. **Move the model caches out of `cache/`**: `sef_models`,
    `sef_models_compete`, `eff_models`, `eff_models_compete`, `glmm_models`,
    `glmm_models_cov`, `glmm_models_cov_famhist` and the `cache/glmm_fits/`
-   directory. `fit_or_cached()` reuses a cached legacy model object by **name**,
-   so without this step `src/02.regression.r` would report old-data models as
-   current. (The GLMM per-set fits are keyed by a hash of the data and would
+   directory. Until 2026-11-12 `fit_or_cached()` reused a cached legacy model
+   object by **name**, so without this step `src/02.regression.r` would have
+   reported old-data models as current (it now checks an input digest; see
+   "Cache behaviour" under "Traps"). (The GLMM per-set fits are keyed by a hash of the data and would
    simply not be hit, but they are stale too.) The cached legacy objects also
    predate the 2026-11-07 split of the comorbidity count into its own model, so
    reusing them would silently keep the rank-deficient bundled set. Also move
@@ -207,7 +223,7 @@ compared.
 | Unit of analysis | one row per participant × medication episode | one row per participant |
 | Random effects | participant random intercept, `(1 \| ID)` | none |
 | Fitting helper | `fit_glmm()` in `lib/02.fit_funs.r` | `fit_prop()` / `fit_hurdle()` |
-| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
+| Model objects | `glmm_models`, `glmm_models_cov`, sensitivity sets `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero` | `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, sensitivity sets `sef_models_cohort`, `eff_models_cohort` |
 | Data frame | `dat_long_glmm` | `dat_nonlong_sef`, `dat_nonlong_eff` |
 
 Both live in `src/02.regression.r`; the legacy block starts under the comment
@@ -279,7 +295,7 @@ within a person. So the decomposed sets are:
 | unadjusted (`glmm_models`) | `start_age`, `cumulative_med_count` (all four outcomes); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 | adjusted (`glmm_models_cov`), family-history sensitivity (`glmm_models_cov_famhist`), drug-class sensitivity (`glmm_models_cov_class`), survey-cohort sensitivity (`glmm_models_cov_cohort`) | `start_age`, `cumulative_med_count` (all four outcomes, one extra set each, see below); `n_se`, `stopped_due_to_se` (effectiveness, remission) |
 | drug-identity sensitivity (`glmm_models_cov_drug`) | only these four sets, for effectiveness and remission only (see "Drug-identity sensitivity set") |
-| strict blank-checklist sensitivity (`glmm_models_cov_strict`) | `n_se`, `stopped_due_to_se` (effectiveness, remission); `cumulative_med_count`, `start_age` (`n_se`, `stopped_due_to_se`) only (see "Strict blank-checklist sensitivity set") |
+| zero-rule blank-checklist sensitivity (`glmm_models_cov_zero`) | `n_se`, `stopped_due_to_se` (effectiveness, remission); `cumulative_med_count`, `start_age` (`n_se`, `stopped_due_to_se`) only (see "Zero-rule blank-checklist sensitivity set") |
 
 `start_age` and `cumulative_med_count` are also **adjustment covariates** in
 the adjusted sets. Since 2026-11-10 (user ruling) they play both roles there:
@@ -396,7 +412,8 @@ the covariates. Cohort is **not** in the main sets.
   per-participant block `fit_model_non_glmm()` therefore drops only the
   covariates that are not the focal set, as `fit_set_cached()` does.)
 - The longitudinal sets use the per-set cache in `cache/glmm_fits/`; the
-  per-participant ones are cached by name (`fit_or_cached()`) and take minutes.
+  per-participant ones are cached by name with an input digest
+  (`fit_or_cached()`) and take minutes.
 - Reported in `results/glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`
   and `results/medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`; in
   Supplementary Tables S5a–S5d (`supp_cohort_{1a,1c,2a,2d}.html`, main adjusted
@@ -459,44 +476,62 @@ with the individual drug, equal to the between-person term.
   (`pp_within_n_se_plus1_{adjusted,drug_adjusted}_{very_well,not_at_all}_*`,
   see "Clinical quantities").
 
-### Strict blank-checklist sensitivity set (`glmm_models_cov_strict`)
+### Zero-rule blank-checklist sensitivity set (`glmm_models_cov_zero`)
 
-Since 2026-11-11 (ruling `a3_strict_sens` in `docs/sa8-migration-plan.md`,
-decided by the orchestrating session under the owner's "go with your
-decisions", owner to confirm). **The main rule is unchanged** (A3 as amended
-2026-11-06): with Yes on the any-side-effects question, a drug whose checklist
-was displayed and recorded with nothing ticked has `n_se` 0 and
-`stopped_due_to_se` 0, with or without the "No side effects" tick. The strict
-rule counts such a row as 0 only when its "No side effects" box is ticked;
-otherwise both are missing (the 2026-11-11 audit's categories "c mixed" and
-"c77 stored -77", `logs/adhoc-se-zero-2026-11-11/`).
+Since 2026-11-12 (owner ruling; it replaces the strict-rule set
+`glmm_models_cov_strict` of 2026-11-11, ruling `a3_strict_sens` in
+`docs/sa8-migration-plan.md`). **The main rule is now the strict rule** (see
+`n_se` under "Contract changes"): with Yes on the any-side-effects question, a
+drug whose checklist was displayed and recorded with nothing ticked counts as 0
+side effects only when its "No side effects" box is ticked; otherwise its
+`n_se` and `stopped_due_to_se` are missing (the 2026-11-11 audit's categories
+"c mixed" and "c77 stored -77", `logs/adhoc-se-zero-2026-11-11/`). The **zero
+rule**, the main rule from the 2026-11-06 amendment of A3 until 2026-11-12,
+codes those rows as 0 side effects and not stopped, with or without the tick.
+It is the supplementary sensitivity analysis.
 
-- **Columns:** the munge writes `n_se_strict` and `stopped_due_to_se_strict`
-  into `dat_long` beside the main columns (it stops if they differ from the
-  main ones anywhere but on those rows, all of which are 0 under the main
-  rule). On snapshot2: 3,273 rows (Baseline 2,428, SA8 845) of 1,675
-  participants; 62 participants have no known count left.
-- **Frame:** `apply_strict_se()` (`lib/13.strict_se.r`) puts the strict values
-  in `n_se` / `stopped_due_to_se`, drops the `_strict` columns and recomputes
+- **Columns:** the munge writes `n_se_zero` and `stopped_due_to_se_zero` into
+  `dat_long` beside the main columns and stops if they differ from them
+  anywhere but on those rows (all missing under the main rule, all 0 under the
+  zero rule). On snapshot2: 3,273 rows (Baseline 2,428, SA8 845) of 1,675
+  participants; 62 participants have no known count under the main rule and
+  one under the zero rule. The munge log prints the same counts before the
+  diagnosis-scope filter (3,376 rows, 1,729 participants, 64).
+- **Frame:** `apply_zero_se()` (`lib/13.zero_se.r`) puts the zero-rule values
+  in `n_se` / `stopped_due_to_se`, drops the `_zero` columns and recomputes
   the within/between terms, so the participant means are over the drugs with
-  a known strict value. Same rows as `dat_long_glmm`; the models' complete
-  cases shrink. The recode counts travel as attribute `strict_se` and are
-  printed in the `src/02` log.
+  a known zero-rule value. Same rows as `dat_long_glmm`. The recode counts come
+  from `zero_se_info()` and are printed in the `src/02` log; the frame carries
+  no extra attribute (see below).
+- **Cache reuse:** the model frame of each zero-rule set (ID, outcome and fixed
+  columns, the data part of `set_cache_path()`) is identical, column names and
+  values, to the frame the same set had in `glmm_models_cov` under the
+  previous main rule (code up to `a3e15bd`), so its key is the same and the
+  fits made for the previous main sets are reused; `GLMM_RECIPE_VERSION` was
+  not bumped. Checked on 2026-11-12 for all eight sets. This is also why
+  `apply_zero_se()` attaches no attribute: a tibble's `[` keeps custom
+  attributes, so an attribute on the frame enters every set's data digest.
+  (The strict-rule frame of 2026-11-11 carried one, `strict_se`, so the strict
+  sets fitted then do not match the new main sets' keys even though the values
+  are identical.)
 - **Scope:** the eight adjusted decomposed models the coding can move (as in
   the ad hoc analysis, `logs/adhoc-strict-se-2026-11-11/`): effectiveness and
   remission on `n_se` and on `stopped_due_to_se`; `n_se` and
   `stopped_due_to_se` on `cumulative_med_count` and on `start_age`. Covariates
   exactly as `glmm_models_cov`, with `covs_for_set()`. Bonferroni ×4 (passed
   explicitly). Per-set cache in `cache/glmm_fits/` like the other GLMM sets.
-- Reported in `results/glmm_medications_cov_strict.xlsx` /
-  `_sig_cov_strict.xlsx`; in **Supplementary Table S7** (`supp_strict.html`,
-  the four outcomes stacked: main rule vs strict rule, corrected p, N; the
-  footnote states the rule and the recoded rows); and in
-  `docs/manuscript-numbers-current.md`, section "Strict blank-checklist
-  sensitivity analysis": the recode counts (`strict_blank_checklist_*`,
-  `strict_participants_no_known_n_se`, `strict_*_known_rows`), the estimates
-  `strict_<outcome>_<predictor>_<within|between>` and the significance changes
-  against `glmm_models_cov` (`strict_sensitivity_*`, 16 matched associations).
+- Reported in `results/glmm_medications_cov_zero.xlsx` /
+  `_sig_cov_zero.xlsx`; in **Supplementary Table S7** (`supp_zero.html`, which
+  replaces `supp_strict.html`; caption "Within-person and between-person
+  associations when blank side-effect checklists are coded as zero"; the four
+  outcomes stacked: main rule vs coded as zero, corrected p, N; the footnote
+  states both rules and the recoded rows as a total); and in
+  `docs/manuscript-numbers-current.md`, section "Zero-coded blank-checklist
+  sensitivity analysis": the recode counts (`zero_blank_checklist_*`,
+  `zero_participants_no_known_n_se`, `zero_*_known_rows`), the estimates
+  `zero_<outcome>_<predictor>_<within|between>` and the significance changes
+  against `glmm_models_cov` (`zero_sensitivity_*`, 16 matched associations).
+  These keys replace the `strict_*` keys one for one.
 
 **Significance changes** (`src/05.manuscript_numbers.r`,
 `add_significance_changes()`): for the cohort set (longitudinal and
@@ -526,7 +561,7 @@ Everything below except `docs/` is **gitignored** and not in the repository.
 | `glmm_medications_cov_class.xlsx` / `_sig_cov_class.xlsx` | GLMM adjusted, class-scoped frame with drug class (sensitivity) |
 | `glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | GLMM adjusted, survey cohort added (sensitivity) |
 | `glmm_medications_cov_drug.xlsx` / `_sig_cov_drug.xlsx` | GLMM within/between sets of effectiveness and remission, individual drug added (sensitivity) |
-| `glmm_medications_cov_strict.xlsx` / `_sig_cov_strict.xlsx` | GLMM within/between sets under the strict blank-checklist coding (sensitivity) |
+| `glmm_medications_cov_zero.xlsx` / `_sig_cov_zero.xlsx` | GLMM within/between sets with blank side-effect checklists coded as zero (sensitivity; replaces `glmm_medications_cov_strict.xlsx`) |
 | `medications.xlsx` / `_sig.xlsx` | legacy unadjusted |
 | `medications_cov.xlsx` / `_sig_cov.xlsx` | legacy adjusted |
 | `medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx` | legacy adjusted, survey cohort added (sensitivity) |
@@ -577,8 +612,8 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample characteristics, overall), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 3a–3c and 4a–4e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_strict.html` (strict blank-checklist Supplementary Table S7) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
-| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_strict`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample characteristics, overall), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 3a–3c and 4a–4e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_zero.html` (zero-rule blank-checklist Supplementary Table S7; `supp_strict.html` until 2026-11-12) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
 | `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 2) and `table_predicted_probabilities.html` (Table 5); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
 - **Table numbering.** The manuscript renumbered its tables on 2026-11-09:
@@ -603,7 +638,7 @@ development extracts, can write to `logs/` instead of over the tracked files.
   appear only in the survey-cohort sensitivity tables S5a–S5e, whose note
   labels them as the earlier (Baseline) and later (SA8) version of the GLAD
   sign-up questionnaire. The S7 footnote gives the recoded rows as a total
-  (`strict_se_recoded_text(by_cohort = FALSE)`); the markdown index and the
+  (`zero_se_recoded_text(by_cohort = FALSE)`); the markdown index and the
   logs keep the split. `src/06` still computes the by-cohort cross-table
   counts and proportions, checks them, and writes them as number keys.
 - **Table 1** (`table_0.html`) describes `dat` overall (one column and a Missing column): sex, employment,
@@ -641,10 +676,11 @@ development extracts, can write to `logs/` instead of over the tracked files.
   1,000-per-survey development sample had no Baseline dates at all, only SA8
   ones (2024-04-02 to 2024-10-21), so a Baseline survey period from
   `response_date_glad` covers only the people who have one.
-- A table or number whose model objects are not in `cache/` is skipped with a
-  message naming the objects, and the markdown says so; an old HTML file for
-  that table is left as it was. Table 1 and the data-only numbers need no
-  model.
+- A table or number whose model objects are not in `cache/`, or were not
+  assembled by `src/02` from the current frames (source-frame stamp, see
+  "Cache behaviour" under "Traps"), is skipped with a message naming the
+  objects, and the markdown says so; an old HTML file for that table is left
+  as it was. Table 1 and the data-only numbers need no model.
 - The dispersion is recorded on each Poisson fit by `fit_glmm()` (attribute
   `dispersion`, since 2026-11-08), because the cached objects keep no fitted
   model. Fits made before that carry none, and the numbers file says so.
@@ -772,12 +808,36 @@ and it cannot skip the assignment above it.
 
 Re-running `src/02.regression.r` therefore used to refit everything — about
 2h20m — regardless of what was in `cache/`. `fit_or_cached()` now guards each
-fitting block: because `reload.project()` restores cached objects (the config
-sets `cache_loading: TRUE`), already-fitted models are reused and only missing
-ones are fitted. Set `FORCE_REFIT=TRUE` to override.
+per-participant fitting block: because `reload.project()` restores cached
+objects (the config sets `cache_loading: TRUE`), already-fitted models are
+reused and only missing ones are fitted. Set `FORCE_REFIT=TRUE` to override.
 
 Expect `Reusing cached model object: ...` in the log. If you see `Fitting: ...`
-for all six, the cache is cold and you are in for a multi-hour run.
+for all six, the cache is cold or the inputs changed.
+
+**Cache behaviour** (audited 2026-11-12, when the main side-effect coding
+changed). Every cache and what invalidates it:
+
+| Cache | Key | After a data change |
+|---|---|---|
+| `cache/glmm_fits/<key>.rds` (every GLMM set, `fit_set_cached()` in `src/02`) | digest of `GLMM_RECIPE_VERSION`, outcome, fixed terms, dropped covariates and `data[c("ID", dep, fixed)]` (attributes of the frame included) | a set whose model frame changed gets a new key and is refitted; an unchanged one is reused |
+| `sef_models`, `eff_models`, `*_compete`, `*_cohort` (`fit_or_cached()` in `src/02`, ProjectTemplate `cache()`) | by name, **plus** attribute `input_digest`: `LEGACY_RECIPE_VERSION`, outcomes, predictor sets, covariates and the frame's columns those fits read (since 2026-11-12) | refitted when the digest differs or is absent (objects cached before 2026-11-12 have none, so the first run refits all six, minutes) |
+| `glmm_models*` and the legacy families as read by `src/03`-`06` (ProjectTemplate `cache()`) | by name, **plus** attributes `source_frame` / `source_digest`: the digest of `dat_long` (GLMM) or `dat` (legacy) at the end of the `src/02` run (`stamp_source_frame()`, `lib/14.model_cache.r`, since 2026-11-12) | `objects_present()` treats a family that is unstamped or stamped from a different frame as absent (`src/04`, `src/05` skip it, `src/06` stops), `src/03` stops (`stop_unless_current()`); re-running `src/02` restamps |
+| `cache/clinical_fits/<key>.rds` (`src/06`, `clmm_job()` in `lib/11`) | digest of recipe, formula and the complete-case model frame | refitted when the frame changes |
+| `dat`, `dat_long`, `labels`, `lab_grouped_illnesses`, `nort_recode_summary` (munge `cache()`) | none needed: `munging: TRUE` rebuilds them on every `load.project()` | always current |
+
+So after the 2026-11-12 coding change: `src/02` refits every GLMM set whose
+model frame contains `n_se` or `stopped_due_to_se` (or their within/between
+terms) as outcome or focal term, in every family, and reuses the others. Checked
+by computing every `set_cache_path()` key under the old (`a3e15bd`) and the new
+main rule: 40 of 78 sets change in the unadjusted, class and cohort families,
+38 of 74 in the adjusted one, 36 of 70 in the family-history one and 4 of 8 in
+the drug one; every other key is identical. The zero-rule sets hit the previous
+main sets' fits (8 of 8 keys identical). `src/02` also refits the six
+per-participant families once and restamps everything; until it has run,
+`src/03`-`06` refuse the cached families. A cached `glmm_models_cov_strict`
+(nothing writes it any more) is dropped from the session by `src/02` and can be
+deleted from `cache/`.
 
 **Namespace masking.** `plyr` is loaded after `dplyr` via `config/global.dcf`,
 so `plyr::mutate` masks `dplyr::mutate`. This silently broke numeric coercion
