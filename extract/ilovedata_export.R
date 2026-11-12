@@ -25,14 +25,19 @@
 #                              under its pipeline name, one response date
 #                              per survey (`response_date_<survey>`, Date), and
 #                              `hidden_list_none_recorded` (see "Display
-#                              evidence" below)
+#                              evidence" below), and the two raw star
+#                              ratings `med.sideeffect_stars_raw` and
+#                              `med.benefit_stars_raw` (see "Raw star ratings")
 #   ilovedata_person_drug.rds  one row per person x antidepressant for the 28
 #                              antidepressants the analysis covers, with the
 #                              per-drug items under short names,
 #                              `se_recorded`, the number of the drug's 30
 #                              side-effect cells with a stored raw value, and
 #                              the display evidence `hidden_list_recorded` and
-#                              `history_recorded`
+#                              `history_recorded`, and `improvement_recorded`,
+#                              the number of the drug's improvement cells
+#                              (further symptoms, improvement duration; pages a
+#                              and b) with a stored raw value
 #   ilovedata_manifest.rds     provenance: snapshot, pipeline commit, store,
 #                              decisions root, export time, the anchor
 #                              resolved for each per-drug item and survey,
@@ -437,6 +442,39 @@ for (s in DATE_SURVEYS) {
   if (any(stray)) stop(sum(stray), " people with a ", s, " response date but no ", s, " response")
 }
 
+# Raw star ratings ------------------------------------------------------------
+
+# The two per-person star ratings, as answered. The derived Variables
+# `med.sideeffect_severity` (0 whenever the any-side-effects gate is No, 6 -
+# stars otherwise, a rating outside 1-5 missing) and `med.benefit_rating` (1-5,
+# anything else missing) overwrite or clamp the answer; these columns do not.
+# They are the Anchors' own values, coded like every other Anchor column here:
+# an answered cell holds its number (SA8 stores a few 0s), a never-shown cell
+# is NA, and a negative value is a Response Status code (-777 seen, not
+# answered; -888 don't know; -999 prefer not to answer; -555 not applicable;
+# -666 implausible), not a rating. People who answered the gate No keep the
+# rating they gave if the cell holds one.
+RAW_RATING_VARS <- c(
+  med.sideeffect_stars_raw = "sideeffects.taking_antidepressants_lowest_worst",
+  med.benefit_stars_raw = "antidepressant_ben.rate_benefits_taking_antidepressants"
+)
+for (a in RAW_RATING_VARS) {
+  for (sv in MED_SURVEYS) {
+    if (!any(members$anchor == a & members$survey == sv)) {
+      stop("Raw rating Anchor ", a, " has no member in ", sv)
+    }
+  }
+}
+raw_ratings <- pick_source(pull_person_vars(unname(RAW_RATING_VARS), MED_SURVEYS),
+                           BASELINE_SURVEYS[["med"]]) %>%
+  mutate(variable = names(RAW_RATING_VARS)[match(variable, RAW_RATING_VARS)]) %>%
+  pivot_wider(names_from = variable, values_from = value) %>%
+  mutate(across(-person_id, ~ suppressWarnings(as.numeric(.x))))
+for (v in setdiff(names(RAW_RATING_VARS), names(raw_ratings))) {
+  warning("Raw rating returned no values for these cohorts: ", v)
+  raw_ratings[[v]] <- NA_real_
+}
+
 # Per-drug items --------------------------------------------------------------
 
 drug_map <- resolve_family(DRUG_ITEMS)
@@ -534,6 +572,48 @@ se_recorded <- se_raw %>%
   inner_join(select(se_cols, survey, response_column_id, drug),
              by = c("survey", "response_column_id")) %>%
   count(person_id, survey, drug, name = "se_recorded")
+
+# Improvement-block evidence ---------------------------------------------------
+
+# Whether a person was shown a drug's improvement block (further symptoms,
+# improvement duration) cannot be read from the sentinel-coded items either:
+# an unanswered cell and an unreached one are both NA or -777. Count, per
+# person x drug, the improvement cells that hold any stored raw value, on
+# glad_med's one page and on SA8's pages a and b alike, with the same interval
+# filter as `se_recorded`. `improvement_recorded` > 0 says the block was
+# displayed and something was recorded; 0 says nothing was stored, which is not
+# proof it was never shown.
+imprv_cols <- imprv_map %>%
+  inner_join(
+    anchor_resolutions_as_of(con, snapshot) %>%
+      distinct(anchor, survey = survey_id, response_column_id),
+    by = c("anchor", "survey"), relationship = "many-to-many"
+  ) %>%
+  filter(!grepl("_DO_|_DO$", response_column_id))
+if (!all(c("glad_med", "glad_sa8_signup") %in% imprv_cols$survey) ||
+    anyDuplicated(imprv_cols[c("survey", "response_column_id")])) {
+  stop("Improvement Anchors do not resolve to one drug per column at snapshot ", snapshot)
+}
+if (nrow(anti_join(imprv_map, imprv_cols, by = c("anchor", "survey")))) {
+  stop("Improvement Anchors with no response column at snapshot ", snapshot)
+}
+duckdb::duckdb_register(con, "glad_medications_imprv_cols",
+                        distinct(imprv_cols, survey_id = survey, response_column_id))
+imprv_raw <- DBI::dbGetQuery(con, sprintf(
+  "SELECT r.survey_id AS survey, r.person_id, r.response_column_id
+     FROM responses r
+     JOIN glad_medications_imprv_cols c
+       ON c.survey_id = r.survey_id AND c.response_column_id = r.response_column_id
+    WHERE r.first_seen_snapshot <= %1$d AND r.last_seen_snapshot >= %1$d
+      AND r.value IS NOT NULL AND r.value <> ''",
+  as.integer(snapshot)
+))
+duckdb::duckdb_unregister(con, "glad_medications_imprv_cols")
+improvement_recorded <- imprv_raw %>%
+  inner_join(select(imprv_cols, survey, response_column_id, drug),
+             by = c("survey", "response_column_id")) %>%
+  count(person_id, survey, drug, name = "improvement_recorded") %>%
+  mutate(improvement_recorded = as.integer(improvement_recorded))
 
 # Display evidence for the first drug list -----------------------------------
 
@@ -672,11 +752,16 @@ person_drug <- person_drug %>%
     history_recorded = coalesce(history_recorded, 0L)
   ) %>%
   select(-hidden_n) %>%
+  # Joined last, so it is the final column and the earlier ones keep their order.
+  left_join(improvement_recorded, by = c("person_id", "survey", "drug")) %>%
+  mutate(improvement_recorded = coalesce(improvement_recorded, 0L)) %>%
   arrange(person_id, match(drug, DRUGS))
 
 person <- person %>%
   mutate(hidden_list_none_recorded = ifelse(in_glad_med, as.integer(person_id %in% hidden_none_ids),
-                                            NA_integer_))
+                                            NA_integer_)) %>%
+  # The raw ratings are joined last, so they add columns, never rows.
+  left_join(raw_ratings, by = "person_id")
 
 # Write -----------------------------------------------------------------------
 
@@ -693,6 +778,8 @@ manifest <- tibble(
 attr(manifest, "anchor_map") <- bind_rows(drug_map, imprv_map)
 attr(manifest, "response_date_anchors") <- date_anchors
 attr(manifest, "display_evidence_columns") <- evidence_cols
+attr(manifest, "raw_rating_anchors") <- RAW_RATING_VARS
+attr(manifest, "improvement_evidence_columns") <- imprv_cols
 
 saveRDS(person, file.path(out_dir, "ilovedata_person.rds"))
 saveRDS(person_drug, file.path(out_dir, "ilovedata_person_drug.rds"))
