@@ -332,7 +332,7 @@ the bottom of the panel), and `src/04.manuscript_tables.r` shows both rows in
 the supplementary tables (and whichever is significant in the Results tables),
 with a footnote; in Tables 3a, 3c, 4a and 4d and S2a, S2c, S3a, S3d the
 start-age and cumulative-count rows now carry an adjusted estimate, and in
-S4a–S4d and S5a–S5d they appear as rows. `src/05.manuscript_numbers.r`
+S4a–S4d and the reference-only cohort tables they appear as rows. `src/05.manuscript_numbers.r`
 reports the main adjusted estimates as
 `adjusted_<outcome>_{start_age,cumulative_med_count}_{within,between}`. The
 legacy per-participant models are unaffected: their predictors are constant
@@ -395,7 +395,9 @@ over the class-scoped rows like the others.
 ### Survey-cohort sensitivity set (`glmm_models_cov_cohort`, `sef_models_cohort`, `eff_models_cohort`)
 
 Since 2026-11-09 (user ruling: "Cohort can be included for sensitivity
-analyses"). The adjusted models with `cohort` (SA8 vs Baseline; a two-level
+analyses"). **Since 2026-11-12 (owner ruling) this analysis is kept for our own
+reference and is not in the write-up**: it is still fitted and its workbooks
+written, but its tables are reference-only (below) and carry no S-number. The adjusted models with `cohort` (SA8 vs Baseline; a two-level
 factor coded 0/1, SA8 = 1, label "Survey cohort (SA8 vs. Baseline)") added to
 the covariates. Cohort is **not** in the main sets.
 
@@ -416,13 +418,18 @@ the covariates. Cohort is **not** in the main sets.
   (`fit_or_cached()`) and take minutes.
 - Reported in `results/glmm_medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`
   and `results/medications_cov_cohort.xlsx` / `_sig_cov_cohort.xlsx`; in
-  Supplementary Tables S5a–S5d (`supp_cohort_{1a,1c,2a,2d}.html`, main adjusted
-  vs cohort-adjusted, one per longitudinal outcome) and S5e
-  (`supp_cohort_legacy.html`, the four per-participant outcomes in one table),
-  numbering provisional; and in `docs/manuscript-numbers-current.md`, section
-  "Survey-cohort sensitivity analysis": the cohort contrast per outcome
-  (`cohort_<outcome>_sa8_vs_baseline`) and the significance changes against the
-  main adjusted set.
+  the reference-only tables in `docs/reference-tables/`
+  (`supp_cohort_{1a,1c,2a,2d}.html`, main adjusted vs cohort-adjusted, one per
+  longitudinal outcome, and `supp_cohort_legacy.html`, the four per-participant
+  outcomes in one table; index `docs/reference-tables-current.md`; captions start
+  "Reference only (not in the manuscript):"; both gitignored; these were
+  Supplementary Tables S5a–S5e until 2026-11-12); and in
+  `docs/manuscript-numbers-current.md`, last section "Reference only: survey
+  cohort (not in the manuscript)": the cohort contrast per outcome
+  (`cohort_<outcome>_sa8_vs_baseline`), the `cohort_adjusted_*` estimates, the
+  significance changes against the main adjusted set, and every by-cohort key
+  (`*_baseline`, `*_sa8`) of `src/05` and `src/06` (the `*_overall` keys stay in
+  their sections).
 
 ### Drug-identity sensitivity set (`glmm_models_cov_drug`)
 
@@ -464,8 +471,8 @@ with the individual drug, equal to the between-person term.
   after 2026-11-11 they carry their thresholds and covariance (see "Clinical
   quantities").
 - Reported in `results/glmm_medications_cov_drug.xlsx` /
-  `_sig_cov_drug.xlsx` (one tab per outcome); in **Supplementary Table S6**
-  (`supp_drug.html`, the two outcomes stacked as in S5e: main adjusted vs
+  `_sig_cov_drug.xlsx` (one tab per outcome); in **Supplementary Table S5**
+  (`supp_drug.html`, S6 until 2026-11-12, the two outcomes stacked: main adjusted vs
   drug-adjusted estimate, corrected p, N); in
   `docs/manuscript-numbers-current.md`, section "Drug-adjusted within/between
   sensitivity analysis": `drug_<outcome>_<predictor>_<within|between>`, the
@@ -521,7 +528,7 @@ It is the supplementary sensitivity analysis.
   exactly as `glmm_models_cov`, with `covs_for_set()`. Bonferroni ×4 (passed
   explicitly). Per-set cache in `cache/glmm_fits/` like the other GLMM sets.
 - Reported in `results/glmm_medications_cov_zero.xlsx` /
-  `_sig_cov_zero.xlsx`; in **Supplementary Table S7** (`supp_zero.html`, which
+  `_sig_cov_zero.xlsx`; in **Supplementary Table S6** (`supp_zero.html`, S7 until 2026-11-12, which
   replaces `supp_strict.html`; caption "Within-person and between-person
   associations when blank side-effect checklists are coded as zero"; the four
   outcomes stacked: main rule vs coded as zero, corrected p, N; the footnote
@@ -612,7 +619,7 @@ development extracts, can write to `logs/` instead of over the tracked files.
 
 | Script | Writes | From |
 |---|---|---|
-| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample characteristics, overall), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 3a–3c and 4a–4e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_cohort_{1a,1c,2a,2d,legacy}.html` (survey-cohort Supplementary Tables S5a–S5e), `supp_drug.html` (drug-adjusted within/between Supplementary Table S6), `supp_zero.html` (zero-rule blank-checklist Supplementary Table S7; `supp_strict.html` until 2026-11-12) | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
+| `src/04.manuscript_tables.r` | `docs/manuscript-tables-current.md` and, in `docs/manuscript-tables/`: `table_0.html` (Table 1, sample characteristics, overall), `table_{1a,1b,1c,2a,2b,2c,2d,2e}.html` (Tables 3a–3c and 4a–4e, significant associations), `supp_{1a,...,2e}.html` (Supplementary Tables S2a–S3e), `supp_class_{1a,1c,2a,2d}.html` (drug-class Supplementary Tables S4a–S4d), `supp_drug.html` (drug-adjusted within/between Supplementary Table S5), `supp_zero.html` (zero-rule blank-checklist Supplementary Table S6; `supp_strict.html` until 2026-11-12); the reference-only survey-cohort tables `supp_cohort_{1a,1c,2a,2d,legacy}.html` and their index go to `docs/reference-tables/` and `docs/reference-tables-current.md` | `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero`; `sef_models`, `eff_models`, `sef_models_compete`, `eff_models_compete`, `sef_models_cohort`, `eff_models_cohort` |
 | `src/05.manuscript_numbers.r` | `docs/manuscript-numbers-current.md`: every stand-alone number the text quotes, as key / value / definition | the extracts, `dat`, `dat_long`; `glmm_models`, `glmm_models_cov`, `glmm_models_cov_famhist`, `glmm_models_cov_class`, `glmm_models_cov_cohort`, `glmm_models_cov_drug`, `glmm_models_cov_zero`, the legacy sets and `sef_models_cohort` / `eff_models_cohort` where present |
 | `src/06.clinical_quantities.r` | in `docs/manuscript-tables/`: `table_cross_effectiveness_stopping.html` (Table 2) and `table_predicted_probabilities.html` (Table 5); a block between `<!-- BEGIN/END src/06.clinical_quantities.r -->` markers in `docs/manuscript-tables-current.md`; the sidecar `docs/manuscript-numbers-clinical.md` (key / value / definition) | `dat_long`; the fitted remission models recovered from `glmm_models_cov` (else `glmm_models`); the drug-adjusted effectiveness ~ number of side effects set of `glmm_models_cov_drug` (thresholds and covariance kept on the cached fit); the medication counts in `docs/manuscript-numbers-current.md`, as a check |
 
@@ -635,11 +642,11 @@ development extracts, can write to `logs/` instead of over the tracked files.
 - **No survey cohort in main-text tables** (ruling 2026-11-11). Table 1 and
   Table 2 describe the sample overall, and no main-table caption or footnote
   names the cohorts, the sign-up versions or the data source. The cohorts
-  appear only in the survey-cohort sensitivity tables S5a–S5e, whose note
-  labels them as the earlier (Baseline) and later (SA8) version of the GLAD
-  sign-up questionnaire. The S7 footnote gives the recoded rows as a total
-  (`zero_se_recoded_text(by_cohort = FALSE)`); the markdown index and the
-  logs keep the split. `src/06` still computes the by-cohort cross-table
+  appear only in the reference-only survey-cohort tables (owner ruling
+  2026-11-12: not in the manuscript, written to `docs/reference-tables/`), and
+  in the reference-only section of the numbers files. The S6 footnote and its
+  markdown index give the recoded rows as a total
+  (`zero_se_recoded_text(by_cohort = FALSE)`); only the logs keep the split. `src/06` still computes the by-cohort cross-table
   counts and proportions, checks them, and writes them as number keys.
 - **Table 1** (`table_0.html`) describes `dat` overall (one column and a Missing column): sex, employment,
   relationship status, PHQ-9, GAD-7, AUDIT, BMI, comorbidity count, family
@@ -775,7 +782,8 @@ from the cached result tables alone. Like `src/04` and `src/05` it takes
 1. `FORCE_REFIT=TRUE Rscript src/02.regression.r > logs/regression_<date>.log 2>&1`
    (see "Traps"); check the convergence report at the end of the log.
 2. `Rscript src/04.manuscript_tables.r > logs/tables_<date>.log 2>&1`: Table 1,
-   Tables 3a–4e, S2a–S7.
+   Tables 3a–4e, S2a–S6; the reference-only cohort tables go to
+   `docs/reference-tables/`.
 3. `Rscript src/05.manuscript_numbers.r > logs/numbers_<date>.log 2>&1`: the
    text's numbers. Neither 2 nor 3 depends on the other.
 4. `Rscript src/06.clinical_quantities.r > logs/clinical_<date>.log 2>&1`, after
